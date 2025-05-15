@@ -22,7 +22,7 @@ python run.py
 ```
 
 ## API Documentation
-Once running, visit [http://localhost:8000/docs](http://localhost:8000/docs) for the interactive Swagger UI.
+Once running, visit [http://localhost:8002/docs](http://localhost:8002/docs) for the interactive Swagger UI.
 
 ---
 
