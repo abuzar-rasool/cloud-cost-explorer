@@ -102,16 +102,22 @@ class StorageTier(Enum):
 from enum import Enum
 
 class StorageTier(Enum):
+    
+    SMART = "Smart"
+    # Purpose:
+    #   - Automatically moves data between tiers based on access patterns
+    #   - Optimizes storage costs & performance
+    #   - Reduces manual management overhead
+    #   - Requires minimal configuration
+    #   - Automatically moves data between tiers based on access patterns
+    
     FREQUENT_ACCESS = "FrequentAccess"
     # Purpose:
     #   - Optimized for data read/written constantly
     #   - Lowest latency & highest IOPS (e.g., SSD/NVMe backing)
     #   - Highest storage cost; minimal or no retrieval fees
     #   - Availability: ≥99.9% (multi-AZ/multi-region)
-    # Provider mappings:
-    #   AWS   → S3 Standard / S3 Express One Zone
-    #   GCP   → STANDARD
-    #   Azure → Hot
+
 
     OCCASIONAL_ACCESS = "OccasionalAccess"
     # Purpose:
@@ -119,10 +125,7 @@ class StorageTier(Enum):
     #   - Moderate latency & throughput (e.g., HDD/SATA backing)
     #   - Lower storage cost than FREQUENT_ACCESS; retrieval fees apply
     #   - Minimum duration: 30 days
-    # Provider mappings:
-    #   AWS   → S3 Standard-IA (and One Zone-IA)
-    #   GCP   → NEARLINE
-    #   Azure → Cool
+  
 
     RARE_ACCESS = "RareAccess"
     # Purpose:
@@ -130,30 +133,19 @@ class StorageTier(Enum):
     #   - Millisecond-scale latency; optimized for rare but speedy access
     #   - Lower storage cost than OCCASIONAL_ACCESS; higher retrieval fees
     #   - Minimum duration: 90 days
-    # Provider mappings:
-    #   AWS   → S3 Glacier Instant Retrieval
-    #   GCP   → COLDLINE
-    #   Azure → Cold
 
     SHORT_TERM_ARCHIVE = "ShortTermArchive"
     # Purpose:
     #   - Archive data retained days to weeks; retrieval in minutes
     #   - Very low storage cost; higher per-GB retrieval & early-deletion fees
     #   - Minimum duration: 30–90 days depending on provider
-    # Provider mappings:
-    #   AWS   → S3 Glacier Flexible Retrieval (expedited/minutes)
-    #   GCP   → ARCHIVE (milliseconds)
-    #   Azure → Archive (rehydrate in hours)
 
     LONG_TERM_ARCHIVE = "LongTermArchive"
     # Purpose:
     #   - Deep-archive for data you almost never retrieve
     #   - Lowest storage cost; retrieval latencies hours to days
     #   - Minimum duration: 180–365 days
-    # Provider mappings:
-    #   AWS   → S3 Glacier Deep Archive
-    #   GCP   → (no direct equivalent)
-    #   Azure → (no direct equivalent beyond Archive)
+
 
     def __str__(self):
         return self.value

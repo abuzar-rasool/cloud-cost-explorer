@@ -26,7 +26,7 @@ class StoragePrice(BaseModel):
 
 class StoragePricingRequest(BaseModel):
     """Request for storage pricing comparison."""
-    region: Region
+    region: Region = Field(..., example="europe")
     specs: StorageSpecs
 
 

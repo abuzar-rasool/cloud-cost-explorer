@@ -28,7 +28,7 @@ class ComputePrice(BaseModel):
 
 class ComputePricingRequest(BaseModel):
     """Request for compute pricing comparison."""
-    region: Region
+    region: Region = Field(..., example="europe")
     specs: ComputeSpecs
 
 
