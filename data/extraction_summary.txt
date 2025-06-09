@@ -1,0 +1,16 @@
+AWS Pricing Data Extraction Summary
+========================================
+Last Updated: 2025-06-09 16:46:10.363287
+Pages processed: 13455
+Items seen: 1345422
+Items filtered out: 560262
+Items with errors: 0
+Valid records found: 785160
+CSV file: data/aws_ondemand_vm_pricing_20250609_155950.csv
+
+Unmapped Regions (Filtered Out):
+===================================
+Total unmapped region instances: 1
+Unique unmapped regions: 1
+
+  : 1 instances
