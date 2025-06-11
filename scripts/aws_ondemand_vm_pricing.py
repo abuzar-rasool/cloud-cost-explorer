@@ -166,7 +166,7 @@ AWS_REGION_TO_CONTINENT = {
     'af-south-1-los-1': 'africa',          # Lagos, Nigeria (Local Zone)
 }
 
-class AWSComputePricingExtractor:
+class AWSComputePricingExtractor:   
     def __init__(self, max_records: Optional[int] = None):
         """Initialize the AWS pricing client.
         
@@ -182,8 +182,8 @@ class AWSComputePricingExtractor:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.csv_file_path = self.data_dir / f"aws_ondemand_vm_pricing_{timestamp}.csv"
         
-        # Single summary file path (no timestamps)
-        self.summary_file_path = self.data_dir / "extraction_summary.txt"
+        # Timestamped summary file path
+        self.summary_file_path = self.data_dir / f"aws_ondemand_vm_pricing_summary_{timestamp}.txt"
         
         # CSV columns
         self.csv_columns = [
