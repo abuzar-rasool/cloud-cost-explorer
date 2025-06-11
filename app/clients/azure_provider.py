@@ -154,6 +154,32 @@ AZURE_REGION_MAPPING = {
     Region.ANTARCTICA: [], # remove—no such region in Azure
 }
 
+# Azure VM series memory ratios (memory GB per vCPU)
+# These are typical ratios used by Azure for different VM series
+VM_SERIES_MEMORY_RATIO = {
+    "A": 2.0,    # General purpose, balanced
+    "B": 4.0,    # Burstable, basic
+    "D": 4.0,    # General purpose, balanced
+    "DS": 4.0,   # General purpose with premium storage
+    "E": 8.0,    # Memory optimized
+    "ES": 8.0,   # Memory optimized with premium storage
+    "F": 2.0,    # Compute optimized
+    "FS": 2.0,   # Compute optimized with premium storage
+    "G": 8.0,    # Memory and storage optimized
+    "GS": 8.0,   # Memory and storage optimized with premium storage
+    "H": 4.0,    # High performance compute
+    "L": 8.0,    # Storage optimized
+    "LS": 8.0,   # Storage optimized with premium storage
+    "M": 24.0,   # Memory optimized, highest memory-to-CPU ratio
+    "N": 4.0,    # GPU enabled
+    "NC": 6.0,   # GPU compute
+    "ND": 8.0,   # GPU for deep learning
+    "NV": 4.0,   # GPU visualization
+    "T": 4.0,    # CPU optimized, high throughput
+    "HB": 4.0,   # High Performance Computing
+    "HC": 4.0    # High Performance Computing
+}
+
 
 client_id       = os.getenv("AZURE_CLIENT_ID")
 client_secret   = os.getenv("AZURE_CLIENT_SECRET")
@@ -174,15 +200,12 @@ class AzureProvider:
         self.prices_base_url = "https://prices.azure.com/api/retail/prices"
         self.vm_prices: List[CloudCompute] = []
         
-    def _get_retail_price(self, service_family: str) -> List[CloudCompute]:
+    def _get_retail_price(self) -> List[dict]:
         """
         Fetches pricing information from Azure Retail Prices API without region filtering
         
-        Args:
-            service_family: The Azure service family (e.g., 'Compute')
-        
         Returns:
-            List of CloudCompute objects
+            List of retail price items as dictionaries
         """
         base_filters = "serviceName eq 'Virtual Machines' and type eq 'Consumption' and contains(skuName, 'Spot') eq false and contains(skuName,'Low Priority') eq false"
         
@@ -190,7 +213,7 @@ class AzureProvider:
         all_items = []
         next_page = self.prices_base_url
         
-        print(f"Fetching Azure prices for all regions...")
+        print(f"Fetching Azure prices for all regions without filtering...")
         page_count = 0
         
         while next_page:
@@ -198,7 +221,6 @@ class AzureProvider:
             print(f"Fetching page {page_count}...")
             
             if "skip" in next_page:  # If next_page already has query parameters
-                print(f"next_page: {next_page}")
                 response = requests.get(next_page)
             else:
                 params = {"$filter": base_filters, "currencyCode": "USD"}
@@ -213,6 +235,9 @@ class AzureProvider:
             
             # Check if there's another page
             next_page = data.get("NextPageLink")
+            
+            print(f"Sleeping for 3 seconds...")
+            time.sleep(3)
         
         print(f"Total items fetched from API: {len(all_items)}")
         
@@ -227,210 +252,7 @@ class AzureProvider:
         ]
         
         print(f"VM items after filtering: {len(vm_items)}")
-        
-        # Map to organize Azure regions to our geographic regions
-        azure_region_to_geo = {}
-        for geo_region, region_list in AZURE_REGION_MAPPING.items():
-            for region_code, region_name in region_list:
-                azure_region_to_geo[region_code] = geo_region
-        
-        azure_vm_prices = []
-        for item in vm_items:
-            # Skip items that don't have a SKU name
-            if not item.get("skuName"):
-                continue
-
-            # Get the Azure region from the item
-            azure_region = item.get("armRegionName", "")
-            if not azure_region:
-                # Skip items without a region
-                continue
-                
-            # Map Azure region to our geographic region
-            geo_region = azure_region_to_geo.get(azure_region)
-            if not geo_region:
-                # If region is not in our mapping, skip or assign to a default
-                # Here we're skipping it to maintain data quality
-                print(f"Skipping item without a region: {item.get('skuName', '')}")
-                continue
-            
-            # Extract all available fields from the item
-            other_details = {
-                "serviceName": item.get("serviceName", ""),
-                "meterName": item.get("meterName", ""),
-                "productName": item.get("productName", ""),
-                "skuName": item.get("skuName", ""),
-                "armRegionName": azure_region,
-                "location": item.get("location", ""),
-                "effectiveStartDate": item.get("effectiveStartDate", ""),
-                "unitOfMeasure": item.get("unitOfMeasure", ""),
-                "retailPrice": item.get("retailPrice", 0),
-                "currencyCode": item.get("currencyCode", "USD"),
-                # Add any other fields that might be useful
-            }
-            
-            # Add any additional fields present in the item
-            for key, value in item.items():
-                if key not in other_details:
-                    other_details[key] = value
-
-            # Try to get a sensible VM name from the product or SKU name
-            vm_name = item.get("productName", "") or item.get("skuName", "")
-            
-            # Default architecture to x86_64 unless we have info that says otherwise
-            cpu_arch = "x86_64"
-            if "ARM" in item.get("skuName", ""):
-                cpu_arch = "ARM64"
-                
-            # Determine OS type from all available name fields
-            os_type = "OTHER"
-            detailed_os = "Unknown"
-            
-            # Check fields for OS information
-            for field in [item.get("productName", ""), item.get("skuName", ""), item.get("meterName", "")]:
-                field_lower = field.lower() if field else ""
-                
-                # Windows detection
-                if "windows" in field_lower:
-                    os_type = "WINDOWS"
-                    detailed_os = "Windows"
-                    
-                    # Detect Windows version
-                    if "server" in field_lower:
-                        detailed_os = "Windows Server"
-                        # Try to extract version
-                        if "2022" in field_lower:
-                            detailed_os += " 2022"
-                        elif "2019" in field_lower:
-                            detailed_os += " 2019"
-                        elif "2016" in field_lower:
-                            detailed_os += " 2016"
-                        elif "2012" in field_lower:
-                            if "r2" in field_lower:
-                                detailed_os += " 2012 R2"
-                            else:
-                                detailed_os += " 2012"
-                    elif "10" in field_lower:
-                        detailed_os = "Windows 10"
-                    elif "11" in field_lower:
-                        detailed_os = "Windows 11"
-                    
-                    break
-                
-                # Linux detection
-                elif any(os_name in field_lower for os_name in ["linux", "ubuntu", "centos", "rhel", "redhat", "suse", "debian"]):
-                    os_type = "LINUX"
-                    
-                    # Detect specific Linux distribution
-                    if "ubuntu" in field_lower:
-                        detailed_os = "Ubuntu"
-                        # Try to extract version
-                        for version in ["18.04", "20.04", "22.04"]:
-                            if version in field_lower:
-                                detailed_os += f" {version}"
-                                break
-                    elif "centos" in field_lower:
-                        detailed_os = "CentOS"
-                        # Try to extract version
-                        for version in ["7", "8"]:
-                            if f"centos {version}" in field_lower or f"centos{version}" in field_lower:
-                                detailed_os += f" {version}"
-                                break
-                    elif "redhat" in field_lower or "rhel" in field_lower:
-                        detailed_os = "Red Hat Enterprise Linux"
-                        # Try to extract version
-                        for version in ["7", "8", "9"]:
-                            if version in field_lower:
-                                detailed_os += f" {version}"
-                                break
-                    elif "suse" in field_lower:
-                        if "enterprise" in field_lower:
-                            detailed_os = "SUSE Linux Enterprise"
-                        else:
-                            detailed_os = "SUSE Linux"
-                    elif "debian" in field_lower:
-                        detailed_os = "Debian"
-                        # Try to extract version
-                        for version in ["10", "11"]:
-                            if version in field_lower:
-                                detailed_os += f" {version}"
-                                break
-                    else:
-                        detailed_os = "Linux"
-                    
-                    break
-            
-            # Store the detailed OS in other_details
-            other_details["detailedOS"] = detailed_os
-
-            # Try to extract CPU and memory info from the SKU name or product name
-            virtual_cpu_count = 0
-            memory_gb = 0
-            
-            # Example: "Standard_D2s_v3" has 2 vCPUs, or "D4as_v4" has 4 vCPUs
-            product_name = item.get("productName", "")
-            sku_name = item.get("skuName", "")
-            
-            # First try to extract from sku_name (usually most reliable)
-            # Many Azure VM sizes have patterns like D2s_v3, F4s_v2, etc. where the number is the vCPU count
-            for name in [sku_name, product_name]:
-                if not name:
-                    continue
-                    
-                # Try to find VM size patterns
-                # Pattern for common VM series like D2s_v3, D4as_v4, etc.
-                vm_size_match = re.search(r'([A-Za-z]+)(\d+)([a-z]*)(_v\d+)?', name)
-                if vm_size_match:
-                    # Group 2 is the number part, which usually corresponds to vCPU count
-                    try:
-                        virtual_cpu_count = int(vm_size_match.group(2))
-                        # For some VM series, memory is often vCPU * 4 or * 8 GB
-                        # This is a very rough estimate
-                        if "D" in vm_size_match.group(1):
-                            memory_gb = virtual_cpu_count * 4
-                        elif "E" in vm_size_match.group(1):
-                            memory_gb = virtual_cpu_count * 8
-                        elif "F" in vm_size_match.group(1):
-                            memory_gb = virtual_cpu_count * 2
-                        # Break after successfully extracting values
-                        break
-                    except (ValueError, IndexError):
-                        pass
-            
-            # Extract VM series information
-            vm_series = None
-            vm_generation = None
-            
-            # Look for VM series patterns in SKU name
-            series_match = re.search(r'_([A-Za-z]+)(\d+)([a-z]*)(_v(\d+))?', sku_name)
-            if series_match:
-                vm_series = series_match.group(1)
-                if series_match.group(5):  # Generation version number
-                    vm_generation = f"v{series_match.group(5)}"
-                
-                # Store VM series info in other_details
-                other_details["vmSeries"] = vm_series
-                if vm_generation:
-                    other_details["vmGeneration"] = vm_generation
-
-            azure_vm_prices.append(
-                CloudCompute(
-                    vm_name=vm_name,
-                    provider_name="AZURE",
-                    virtual_cpu_count=virtual_cpu_count,  # Will be populated from specifications later
-                    memory_gb=memory_gb,  # Will be populated from specifications later
-                    cpu_arch=cpu_arch,
-                    price_per_hour_usd=float(item.get("retailPrice", 0)),
-                    gpu_count=0,  # Will be populated from specifications later
-                    gpu_name=None,  # Will be populated from specifications later if available
-                    gpu_memory=0.0,  # Will be populated from specifications later if available
-                    os_type=os_type,  # Set based on name analysis
-                    region=geo_region.value,
-                    other_details=other_details
-                )
-            )
-        
-        return azure_vm_prices
+        return vm_items
 
     def _get_vm_specifications(self, region: str) -> dict:
         """
@@ -452,15 +274,6 @@ class AzureProvider:
         ))
         
         print(f"Retrieved {len(resource_skus)} VM SKUs from Azure")
-        
-        # Debugging: print a few SKUs to understand the structure
-        if resource_skus:
-            sample_sku = resource_skus[0]
-            print(f"Sample SKU: {sample_sku.name}")
-            if hasattr(sample_sku, 'family'):
-                print(f"Family: {sample_sku.family}")
-            if hasattr(sample_sku, 'size'):
-                print(f"Size: {sample_sku.size}")
             
         for sku in resource_skus:
             # Skip SKUs without capabilities
@@ -516,14 +329,93 @@ class AzureProvider:
                 vm_specs[size_name] = vm_specs[sku.name]
                 
         print(f"Processed {len(vm_specs)} VM specifications with capabilities")
-        
-        # Debug: show some example keys to understand naming patterns
-        if vm_specs:
-            print("Sample VM specification keys:")
-            for i, key in enumerate(list(vm_specs.keys())[:5]):
-                print(f"  {i+1}. {key}")
-            
         return vm_specs
+    
+    def _estimate_memory_from_vm_size(self, vm_size: str, vcpu_count: int) -> float:
+        """
+        Estimates memory in GB based on VM size name and vCPU count
+        
+        Args:
+            vm_size: VM size name (e.g., "Standard_D2s_v3" or "D2s_v3")
+            vcpu_count: Number of vCPUs for the VM
+            
+        Returns:
+            Estimated memory in GB
+        """
+        if not vm_size or vcpu_count <= 0:
+            return 0.0
+            
+        # Extract series letter (like D, E, F, etc.)
+        # Try different patterns to extract the series
+        series_match = re.search(r'([A-Za-z]+)(\d+)', vm_size)
+        if not series_match:
+            # Try alternative pattern for names like "Standard_D2s_v3"
+            parts = vm_size.split('_')
+            if len(parts) > 1:
+                series_match = re.search(r'([A-Za-z]+)(\d+)', parts[-1])
+                
+        if series_match:
+            series = series_match.group(1).upper()
+            
+            # Check for common Azure VM series patterns
+            for key in VM_SERIES_MEMORY_RATIO:
+                if series.startswith(key):
+                    return vcpu_count * VM_SERIES_MEMORY_RATIO[key]
+            
+            # For unknown series, use a default ratio of 4 GB per vCPU (common in Azure)
+            return vcpu_count * 4.0
+            
+        return 0.0
+    
+    def _match_vm_with_spec(self, vm_item: dict, combined_vm_specs: dict) -> dict:
+        """
+        Advanced matching logic to find the best VM specification match
+        
+        Args:
+            vm_item: VM item from retail API
+            combined_vm_specs: Dictionary of VM specifications
+            
+        Returns:
+            Best matching VM specification or None
+        """
+        # Extract key fields for matching
+        sku_name = vm_item.get("skuName", "")
+        product_name = vm_item.get("productName", "")
+        meter_name = vm_item.get("meterName", "")
+        
+        # Try direct matching first
+        for name in [sku_name, product_name, meter_name]:
+            if name in combined_vm_specs:
+                return combined_vm_specs[name]
+                
+        # Try matching with Standard_ prefix removed
+        if sku_name.startswith("Standard_"):
+            name_without_prefix = sku_name[9:]  # Remove "Standard_"
+            if name_without_prefix in combined_vm_specs:
+                return combined_vm_specs[name_without_prefix]
+                
+        # Try matching just the VM size part (e.g., "D2s_v3" from "Standard_D2s_v3")
+        parts = sku_name.split('_')
+        if len(parts) > 1:
+            # For "Standard_D2s_v3", try "D2s_v3"
+            suffix = '_'.join(parts[1:])
+            if suffix in combined_vm_specs:
+                return combined_vm_specs[suffix]
+                
+            # Try just the size part (like "D2s")
+            if parts[1] in combined_vm_specs:
+                return combined_vm_specs[parts[1]]
+                
+        # Try partial matching - look for any key that's part of our SKU name
+        # This is more aggressive matching that might be less accurate
+        for spec_key in combined_vm_specs.keys():
+            # Only consider keys that are at least 3 characters for better accuracy
+            if len(spec_key) >= 3:
+                if spec_key in sku_name or spec_key in product_name:
+                    return combined_vm_specs[spec_key]
+        
+        # No match found
+        return None
 
     def get_compute_pricing(self) -> List[CloudCompute]:
         """
@@ -532,205 +424,203 @@ class AzureProvider:
         Returns:
             List of CloudCompute objects
         """
-        # Get VM specifications for all regions
-        vm_specs_by_region = {}
+        # 1. Call retail API without region filter to get all VMs
+        vm_items = self._get_retail_price()
         
-        print("Getting VM specifications for all regions...")
-        
-        # Get region codes from all geographic regions
-        all_region_codes = []
+        # 2. Create region mapping for easier lookup
+        azure_region_to_geo = {}
         for geo_region, region_list in AZURE_REGION_MAPPING.items():
-            for region_code, _ in region_list:
-                all_region_codes.append(region_code)
+            for region_code, region_name in region_list:
+                azure_region_to_geo[region_code] = geo_region.value
         
-        # Sample a few key regions to get VM specifications
-        # We don't need to query all regions as VM specs are often similar
+        # Get VM specifications for sample regions
+        # We don't need to query all regions as VM specs are often similar across regions
         sample_regions = ["eastus", "westeurope", "southeastasia", "australiaeast"]
         
-        # Use regions from our mapping if sample regions not available
-        if not any(region in all_region_codes for region in sample_regions):
-            sample_regions = all_region_codes[:2]  # Just use the first couple of regions
-        
-        # Filter to regions we actually have
-        sample_regions = [r for r in sample_regions if r in all_region_codes]
-        
-        if not sample_regions:
-            print("No valid regions found for VM specifications!")
-            return []
-        
         # Get VM specifications for the sample regions
-        for region in sample_regions:
-            print(f"Getting VM specifications for {region}...")
-            vm_specs_by_region[region] = self._get_vm_specifications(region)
-            print(f"Retrieved {len(vm_specs_by_region[region])} VM specifications for {region}")
-        
-        # Combine all VM specifications
         combined_vm_specs = {}
-        for region_specs in vm_specs_by_region.values():
+        for region in sample_regions:
+            region_specs = self._get_vm_specifications(region)
             combined_vm_specs.update(region_specs)
+            print(f"Retrieved {len(region_specs)} VM specifications for {region}")
         
         print(f"Combined VM specifications: {len(combined_vm_specs)} unique VM types")
         
-        # Get pricing data for all regions
-        vm_prices = self._get_retail_price("Compute")
-        
-        # Create a filtered list of VMs
-        filtered_prices = []
+        # 3. Process each VM item and create CloudCompute objects
+        cloud_compute_list = []
         matched_count = 0
+        memory_from_specs_count = 0
+        memory_estimated_count = 0
         
-        for price in vm_prices:
-            # Get SKU name from different fields to try matching
-            product_name = price.other_details.get("productName", "") if price.other_details else ""
-            meter_name = price.other_details.get("meterName", "") if price.other_details else ""
-            sku_name = price.other_details.get("skuName", "") if price.other_details else ""
+        for item in vm_items:
+            # Extract the Azure region from the item
+            azure_region = item.get("armRegionName", "")
+            if not azure_region:
+                continue
+                
+            # Map Azure region to our geographic region
+            geo_region = azure_region_to_geo.get(azure_region)
+            if not geo_region:
+                continue
             
-            # Try to match with VM specifications using different name fields
-            spec_match = None
+            # Create other_details dictionary with all item properties
+            other_details = dict(item)
             
-            # First try direct matches
-            if sku_name in combined_vm_specs:
-                spec_match = combined_vm_specs[sku_name]
-            elif product_name in combined_vm_specs:
-                spec_match = combined_vm_specs[product_name]
-            elif meter_name in combined_vm_specs:
-                spec_match = combined_vm_specs[meter_name]
+            # Try to get a sensible VM name
+            vm_name = item.get("productName", "") or item.get("skuName", "")
+            
+            # Initialize CloudCompute fields with default values
+            virtual_cpu_count = 0
+            memory_gb = 0.0
+            cpu_arch = "x86_64"
+            price_per_hour_usd = float(item.get("retailPrice", 0))
+            gpu_count = 0
+            gpu_name = None
+            gpu_memory = 0.0
+            os_type = "OTHER"
+            
+            # Determine OS type from available fields
+            product_name = item.get("productName", "").lower()
+            sku_name = item.get("skuName", "").lower()
+            meter_name = item.get("meterName", "").lower()
+            
+            # OS type detection
+            if "windows" in product_name or "windows" in sku_name or "windows" in meter_name:
+                os_type = "WINDOWS"
+                other_details["detailedOS"] = "Windows"
+                
+                # Extract Windows version if available
+                if "server" in product_name or "server" in sku_name:
+                    if "2022" in product_name or "2022" in sku_name:
+                        other_details["detailedOS"] = "Windows Server 2022"
+                    elif "2019" in product_name or "2019" in sku_name:
+                        other_details["detailedOS"] = "Windows Server 2019"
+                    elif "2016" in product_name or "2016" in sku_name:
+                        other_details["detailedOS"] = "Windows Server 2016"
+                    else:
+                        other_details["detailedOS"] = "Windows Server"
+            elif any(os_name in product_name or os_name in sku_name or os_name in meter_name 
+                    for os_name in ["linux", "ubuntu", "centos", "rhel", "redhat", "suse", "debian"]):
+                os_type = "LINUX"
+                
+                # Determine Linux distribution if possible
+                if "ubuntu" in product_name or "ubuntu" in sku_name:
+                    other_details["detailedOS"] = "Ubuntu"
+                elif "centos" in product_name or "centos" in sku_name:
+                    other_details["detailedOS"] = "CentOS"
+                elif "redhat" in product_name or "rhel" in product_name or "redhat" in sku_name or "rhel" in sku_name:
+                    other_details["detailedOS"] = "Red Hat Enterprise Linux"
+                elif "suse" in product_name or "suse" in sku_name:
+                    other_details["detailedOS"] = "SUSE Linux"
+                elif "debian" in product_name or "debian" in sku_name:
+                    other_details["detailedOS"] = "Debian"
+                else:
+                    other_details["detailedOS"] = "Linux"
             else:
-                # Try partial matches - find a spec where the SKU name is contained in the product or meter name
-                for spec_key, spec_value in combined_vm_specs.items():
-                    if (spec_key in product_name or 
-                        spec_key in meter_name or
-                        spec_key in sku_name or
-                        product_name in spec_key or
-                        meter_name in spec_key):
-                        spec_match = spec_value
-                        break
+                # If no specific OS detected, default to Linux for standard VMs
+                if product_name.startswith("standard_") or "virtual machines" in product_name and "windows" not in product_name:
+                    os_type = "LINUX"
+                    other_details["detailedOS"] = "Linux"
             
-            # Enrich with VM specifications if available
+            # Try to extract VM size information from SKU name
+            # Example: Standard_D2s_v3 has 2 vCPUs
+            vm_size_match = re.search(r'([A-Za-z]+)(\d+)([a-z]*)(_v\d+)?', sku_name)
+            if vm_size_match:
+                try:
+                    cpu_count = int(vm_size_match.group(2))
+                    if cpu_count > 0:
+                        virtual_cpu_count = cpu_count
+                except (ValueError, IndexError):
+                    pass
+                    
+                # Store VM series info
+                vm_series = vm_size_match.group(1) if vm_size_match.group(1) else ""
+                vm_version = vm_size_match.group(4) if vm_size_match.group(4) else ""
+                
+                if vm_series:
+                    other_details["vmSeries"] = vm_series
+                if vm_version:
+                    other_details["vmGeneration"] = vm_version
+            
+            # Check if the VM is in our specifications database using the enhanced matching
+            spec_match = self._match_vm_with_spec(item, combined_vm_specs)
+                     
+            # If we found a match, use the specification data
             if spec_match:
                 matched_count += 1
-                price.virtual_cpu_count = spec_match["vCPUs"]
-                price.memory_gb = spec_match["memoryGB"]
+                virtual_cpu_count = spec_match.get("vCPUs", virtual_cpu_count)
+                memory_gb = spec_match.get("memoryGB", memory_gb)
+                if memory_gb > 0:
+                    memory_from_specs_count += 1
+                gpu_count = spec_match.get("gpuCount", gpu_count)
                 
-                # Update GPU information if available
-                if "gpuCount" in spec_match and spec_match["gpuCount"] > 0:
-                    price.gpu_count = spec_match["gpuCount"]
+                # Check for ARM architecture
+                if spec_match.get("CpuArchitectureType", "").lower() == "arm64":
+                    cpu_arch = "ARM64"
                     
-                    # Try to extract GPU name from the SKU name or product name
-                    if "gpu" in sku_name.lower() or "gpu" in product_name.lower():
-                        # Extract GPU info from the SKU name if possible
-                        if "nvidia" in sku_name.lower() or "nvidia" in product_name.lower():
-                            price.gpu_name = "NVIDIA"
-                        elif "amd" in sku_name.lower() or "amd" in product_name.lower():
-                            price.gpu_name = "AMD"
-                
-                # Add more VM specifications to other_details
-                if price.other_details:
-                    # Extract OS information from spec_match if available
-                    if "OSType" in spec_match:
-                        os_type = spec_match["OSType"]
-                        price.other_details["specOSType"] = os_type
-                        
-                        # Update the main OS type if not already set
-                        if price.os_type == "OTHER":
-                            if os_type.lower() == "windows":
-                                price.os_type = "WINDOWS"
-                            elif os_type.lower() in ["linux", "ubuntu", "debian", "centos", "redhat", "rhel", "suse"]:
-                                price.os_type = "LINUX"
-                    
-                    # Extract other interesting capabilities
-                    if "HyperVGenerations" in spec_match:
-                        price.other_details["hyperVGeneration"] = spec_match["HyperVGenerations"]
-                    
-                    # Check for premium storage support
-                    if "PremiumIO" in spec_match:
-                        price.other_details["supportsPremiumStorage"] = spec_match["PremiumIO"] == "True"
-                    
-                    # Check for encryption capabilities
-                    if "EncryptionAtHostSupported" in spec_match:
-                        price.other_details["supportsEncryptionAtHost"] = spec_match["EncryptionAtHostSupported"] == "True"
-                    
-                    # Add CPU information if available
-                    if "CpuArchitectureType" in spec_match:
-                        price.other_details["cpuArchitectureType"] = spec_match["CpuArchitectureType"]
-                        # Update the main CPU architecture if spec provides it
-                        if spec_match["CpuArchitectureType"].lower() == "arm64":
-                            price.cpu_arch = "ARM64"
-                        elif spec_match["CpuArchitectureType"].lower() in ["x64", "x86_64", "amd64"]:
-                            price.cpu_arch = "x86_64"
-                    
-                    # Ensure all numeric fields in vm_specs are properly typed
-                    typed_vm_specs = {}
-                    for key, value in spec_match.items():
-                        if isinstance(value, str):
-                            # Try to convert string numeric values to their proper types
-                            try:
-                                if value.isdigit():
-                                    typed_vm_specs[key] = int(value)
-                                elif value.replace(".", "", 1).isdigit():
-                                    typed_vm_specs[key] = float(value)
-                                else:
-                                    typed_vm_specs[key] = value
-                            except (AttributeError, ValueError):
-                                typed_vm_specs[key] = value
-                        else:
-                            typed_vm_specs[key] = value
-                    
-                    price.other_details.update(typed_vm_specs)
-
-            # Additional OS type detection if still set to OTHER
-            if price.os_type == "OTHER":
-                # Check additional fields for OS information
-                fields_to_check = [
-                    product_name.lower(),
-                    meter_name.lower(),
-                    sku_name.lower()
-                ]
-                
-                # Look for OS indicators in all fields
-                for field in fields_to_check:
-                    if "windows" in field:
-                        price.os_type = "WINDOWS"
-                        break
-                    elif any(os_name in field for os_name in ["linux", "ubuntu", "centos", "rhel", "redhat", "suse", "debian"]):
-                        price.os_type = "LINUX"
-                        break
-                
-                # If still OTHER but the VM matches a pattern typically used for Linux VMs, assume Linux
-                if price.os_type == "OTHER" and (
-                    product_name.startswith("Standard_") or
-                    "Virtual Machines" in product_name and not "Windows" in product_name
-                ):
-                    # Most Azure VMs default to Linux pricing unless specified as Windows
-                    price.os_type = "LINUX"
-
-            # Check if this VM meets the filter criteria (can add more filtering here)
-            include_vm = True
+                # Add additional specifications to other_details
+                other_details.update(spec_match)
             
-            # Only add to filtered list if it passes all filters
-            if include_vm:
-                filtered_prices.append(price)
-        
-        print(f"VM spec match rate: {matched_count}/{len(filtered_prices)} ({matched_count/len(filtered_prices)*100 if filtered_prices else 0:.2f}%)")        
-        self.vm_prices = filtered_prices
-        
-        # Count OS types for reporting
-        windows_count = sum(1 for p in filtered_prices if p.os_type == "WINDOWS")
-        linux_count = sum(1 for p in filtered_prices if p.os_type == "LINUX")
-        other_count = sum(1 for p in filtered_prices if p.os_type == "OTHER")
-        
-        print(f"OS types: Windows: {windows_count}, Linux: {linux_count}, Other: {other_count}")
-        
-        # Count instances by region
-        region_counts = {}
-        for p in filtered_prices:
-            region_counts[p.region] = region_counts.get(p.region, 0) + 1
+            # If we still don't have memory information, estimate it from the VM size and CPU count
+            if memory_gb <= 0 and virtual_cpu_count > 0:
+                memory_gb = self._estimate_memory_from_vm_size(item.get("skuName", ""), virtual_cpu_count)
+                if memory_gb > 0:
+                    memory_estimated_count += 1
+                    other_details["memorySource"] = "estimated"
             
-        print("VM counts by region:")
-        for region, count in sorted(region_counts.items(), key=lambda x: x[1], reverse=True):
-            print(f"  {region}: {count}")
+            # GPU detection
+            if gpu_count > 0 or "gpu" in sku_name or "gpu" in product_name:
+                # If gpu_count not set but "gpu" is in the name, assume at least 1
+                if gpu_count == 0:
+                    gpu_count = 1
+                    
+                # Try to determine GPU manufacturer/model
+                if "nvidia" in sku_name or "nvidia" in product_name:
+                    gpu_name = "NVIDIA"
+                elif "amd" in sku_name or "amd" in product_name:
+                    gpu_name = "AMD"
+                    
+                # Try to extract GPU memory if available
+                # This is a rough estimation as detailed GPU specs are often not available in the API
+                if "v100" in sku_name or "v100" in product_name:
+                    gpu_name = "NVIDIA Tesla V100"
+                    gpu_memory = 16.0  # Most V100s have 16GB
+                elif "k80" in sku_name or "k80" in product_name:
+                    gpu_name = "NVIDIA Tesla K80"
+                    gpu_memory = 12.0
+                elif "p100" in sku_name or "p100" in product_name:
+                    gpu_name = "NVIDIA Tesla P100"
+                    gpu_memory = 16.0
+                elif "a100" in sku_name or "a100" in product_name:
+                    gpu_name = "NVIDIA A100"
+                    gpu_memory = 40.0
             
-        print(f"Total number of VMs fetched: {len(self.vm_prices)}")
-        return self.vm_prices
+            # Create CloudCompute object
+            compute = CloudCompute(
+                vm_name=vm_name,
+                provider_name="AZURE",
+                virtual_cpu_count=virtual_cpu_count,
+                memory_gb=memory_gb,
+                cpu_arch=cpu_arch,
+                price_per_hour_usd=price_per_hour_usd,
+                gpu_count=gpu_count,
+                gpu_name=gpu_name,
+                gpu_memory=gpu_memory,
+                os_type=os_type,
+                region=geo_region,
+                other_details=other_details
+            )
+            
+            cloud_compute_list.append(compute)
+        
+        self.vm_prices = cloud_compute_list
+        print(f"Created {len(cloud_compute_list)} CloudCompute objects")
+        print(f"VMs matched with specifications: {matched_count} ({matched_count/len(cloud_compute_list)*100 if cloud_compute_list else 0:.2f}%)")
+        print(f"VMs with memory from specs: {memory_from_specs_count} ({memory_from_specs_count/len(cloud_compute_list)*100 if cloud_compute_list else 0:.2f}%)")
+        print(f"VMs with estimated memory: {memory_estimated_count} ({memory_estimated_count/len(cloud_compute_list)*100 if cloud_compute_list else 0:.2f}%)")
+        print(f"VMs with memory data (total): {memory_from_specs_count + memory_estimated_count} ({(memory_from_specs_count + memory_estimated_count)/len(cloud_compute_list)*100 if cloud_compute_list else 0:.2f}%)")
+        
+        return cloud_compute_list
 
     def get_storage_pricing(self) -> List[CloudStorage]:
         """
@@ -795,17 +685,6 @@ def main():
                 print(f"{i+1}. {instance.vm_name}: {instance.virtual_cpu_count} vCPUs, {instance.memory_gb} GB memory, " +
                       f"OS: {instance.os_type} ({detailed_os}){vm_series_info}, ${instance.price_per_hour_usd:.4f}/hour")
         
-        # Show detailed OS distributions
-        print("\nDetailed OS distribution:")
-        os_count = {}
-        for instance in all_instances:
-            detailed_os = instance.other_details.get("detailedOS", "Unknown") if instance.other_details else "Unknown"
-            os_count[detailed_os] = os_count.get(detailed_os, 0) + 1
-        
-        # Sort by count (descending)
-        for os_name, count in sorted(os_count.items(), key=lambda x: x[1], reverse=True)[:10]:
-            print(f"  {os_name}: {count} instances ({count/len(all_instances)*100:.2f}%)")
-        
         # Count instances by region
         print("\nInstances by region:")
         region_count = {}
@@ -816,7 +695,7 @@ def main():
         for region, count in sorted(region_count.items(), key=lambda x: x[1], reverse=True):
             print(f"  {region}: {count} instances ({count/len(all_instances)*100:.2f}%)")
         
-        # save to csv
+        # 4. Save the data to CSV
         output_path = "data/azure_instances.csv"
         print(f"\nSaving data to {output_path}")
         
@@ -825,7 +704,9 @@ def main():
         
         with open(output_path, "w", newline="") as f:
             writer = csv.writer(f)
+            # Write headers
             writer.writerow(all_instances[0].model_dump().keys())
+            # Write data
             for instance in all_instances:
                 # Make a copy of the model data
                 instance_data = instance.model_dump()
@@ -835,7 +716,7 @@ def main():
                     instance_data['other_details'] = json.dumps(instance_data['other_details'])
                 writer.writerow(instance_data.values())
         
-        print(f"Successfully saved {len(all_instances)} instances to {output_path}")
+        print(f"Successfully saved {len(all_instances[:100])} instances to {output_path}")
         print("Done!")
             
     except Exception as e:
