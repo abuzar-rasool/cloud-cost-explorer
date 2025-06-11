@@ -1,0 +1,52 @@
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Provider {
+  AWS
+  AZURE
+  GCP
+}
+
+enum OS_Type {
+  LINUX
+  WINDOWS
+  OTHER
+}
+
+enum Region {
+  north_america
+  south_america
+  europe
+  asia
+  africa
+  oceania
+  antarctica
+}
+
+model OnDemandVMPricing {
+  id        Int      @id @default(autoincrement())
+  vm_name    String
+  provider_name   Provider
+  virtual_cpu_count Int
+  memory_gb Float
+  cpu_arch String
+  price_per_hour_usd Float
+  gpu_count Int
+  gpu_name String?
+  gpu_memory Float
+  os_type OS_Type
+  region Region
+  other_details Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("on-demand-vm-pricing")
+}
