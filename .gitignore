@@ -2,3 +2,8 @@
 .cursor/
 .env
 .DS_Store
+.build/
+.package-lock.json
+cdk/cdk.out/
+cdk/node_modules/
+data/
