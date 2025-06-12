@@ -98,9 +98,29 @@ The application creates three tables:
 
 Each table contains basic VM information that can be expanded with additional columns as needed.
 
-### Manual Pipeline Execution
+## Standardized CSV Output Format For Compute Instances
 
-To manually run the pipeline:
-```
-python run_pipeline.py
-``` 
+The data collection scripts for each cloud provider (AWS, Azure, and eventually GCP) are designed to produce a CSV file with a standardized format. This allows for consistent processing and analysis.
+
+Please note: We only add OnDemand instances.
+
+The CSV file has the following columns:
+
+| Field Name            | Data Type      | Description                                                                                                                                     | Example (for a GCP instance)                |
+| --------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `vm_name`             | String         | The official name/type of the VM instance (e.g., instance name type).                                                                           | `"n2-standard-2"`                           |
+| `provider_name`       | String         | The name of the cloud provider. This will be one of `AWS`, `AZURE`, or `GCP`.                                                                   | `"GCP"`                                     |
+| `virtual_cpu_count`   | Integer        | The number of virtual CPUs (vCPUs) for the instance.                                                                                            | `2`                                         |
+| `memory_gb`           | Float          | The amount of memory (RAM) for the instance, specified in Gibibytes (GiB).                                                                      | `8.0`                                       |
+| `cpu_arch`            | String         | The CPU architecture. Common values are `"x86_64"` and `"ARM64"`.                                                                                 | `"x86_64"`                                  |
+| `price_per_hour_usd`  | Float          | The on-demand (pay-as-you-go) price for the instance per hour, in US Dollars.                                                                   | `0.095`                                     |
+| `gpu_count`           | Integer        | The number of GPUs attached to the instance. Should be `0` if none.                                                                             | `1`                                         |
+| `gpu_name`            | String         | The name or model of the attached GPU (e.g., "NVIDIA Tesla T4"). Should be empty or null if `gpu_count` is 0.                                    | `"NVIDIA Tesla T4"`                         |
+| `gpu_memory`          | Float          | The total memory for all GPUs attached, in Gibibytes (GiB). Should be `0.0` if `gpu_count` is 0.                                                 | `16.0`                                      |
+| `os_type`             | String (Enum)  | The general operating system family. Possible values are: `LINUX`, `WINDOWS`, `OTHER`.                                                          | `"LINUX"`                                   |
+| `region`              | String (Enum)  | The geographical continent where the instance is located. Possible values are: `north_america`, `south_america`, `europe`, `asia`, `africa`, `oceania`, `antarctica`. | `"north_america"`                           |
+| `other_details`       | String (JSON)  | A single JSON string containing provider-specific details. In the output CSV, this entire string is enclosed in double quotes (`"`), and any internal double quotes are escaped. | `"{""key"":""value""}"`                      |
+
+
+
+## Standardized CSV Output Format For Storage (TODO)
