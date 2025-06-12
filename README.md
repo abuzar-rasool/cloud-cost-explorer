@@ -102,5 +102,5 @@ Each table contains basic VM information that can be expanded with additional co
 
 To manually run the pipeline:
 ```
-docker-compose exec app python -m app.pipeline
+python run_pipeline.py
 ``` 
