@@ -236,8 +236,8 @@ class AzureProvider:
             # Check if there's another page
             next_page = data.get("NextPageLink")
             
-            print(f"Sleeping for 3 seconds...")
-            time.sleep(3)
+            print(f"Sleeping for 5 seconds...")
+            time.sleep(5)
         
         print(f"Total items fetched from API: {len(all_items)}")
         

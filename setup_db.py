@@ -17,21 +17,17 @@ def setup_database():
     
     # Try to get the database URL
     try:
-        # Try the DATABASE_URL environment variable first
-        try:
-            database_url = get_database_url()
-            print(f"Using DATABASE_URL from environment: {database_url.split('@')[1]}")
-        except ValueError:
-            # Build from components if DATABASE_URL is not set
-            params = get_connection_params()
-            database_url = format_connection_string(
-                user=params["user"],
-                password=params["password"],
-                host=params["host"],
-                port=params["port"],
-                database=params["database"]
-            )
-            print(f"Using database connection: {params['host']}:{params['port']}/{params['database']}")
+
+        params = get_connection_params()
+        print(params)
+        database_url = format_connection_string(
+            user=params["user"],
+            password=params["password"],
+            host=params["host"],
+            port=params["port"],
+            database=params["database"]
+        )
+        print(f"Using database connection: {params['host']}:{params['port']}/{params['database']}")
             
         # Set the environment variable for Prisma
         os.environ["DATABASE_URL"] = database_url

@@ -4,6 +4,10 @@ Database configuration utilities.
 import os
 from urllib.parse import urlparse, ParseResult
 
+import dotenv
+
+dotenv.load_dotenv()
+
 
 def get_database_url() -> str:
     """
@@ -58,11 +62,17 @@ def get_connection_params() -> dict:
         dict: Database connection parameters
     """
     # Try to get individual components first
-    db_host = os.environ.get("DB_HOST")
-    db_port = os.environ.get("DB_PORT", "5432")
-    db_user = os.environ.get("DB_USER")
-    db_pass = os.environ.get("DB_PASSWORD")
-    db_name = os.environ.get("DB_NAME")
+    db_host = os.getenv("DB_HOST")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_user = os.getenv("DB_USER")
+    db_pass = os.getenv("DB_PASSWORD")
+    db_name = os.getenv("DB_NAME")
+    
+    print(f"DB_HOST: {db_host}")
+    print(f"DB_PORT: {db_port}")
+    print(f"DB_USER: {db_user}")
+    print(f"DB_PASSWORD: {db_pass}")
+    print(f"DB_NAME: {db_name}")
     
     # If all components are available, use them
     if all([db_host, db_user, db_pass, db_name]):
