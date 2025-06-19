@@ -91,6 +91,7 @@ class CostExplorerCloudStack extends cdk.Stack {
               phases: {
                 preBuild: {
                   commands: [
+                    'nvm use 20',
                     'node --version',
                     'npm --version',
                     'npm ci',
