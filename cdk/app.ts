@@ -2,9 +2,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import * as amplify from '@aws-cdk/aws-amplify-alpha';
-import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import { Construct } from 'constructs';
 
 // Stack definition
@@ -64,102 +61,6 @@ class CostExplorerCloudStack extends cdk.Stack {
     
     database.connections.allowDefaultPortFrom(dbSecurityGroup);
 
-    // Create GitHub source code provider (requires GitHub token in Secrets Manager)
-    const sourceCodeProvider = new amplify.GitHubSourceCodeProvider({
-      owner: 'abuzar-rasool',
-      repository: 'cloud-cost-explorer',
-      oauthToken: cdk.SecretValue.secretsManager('github-oauth-token'),
-    });
-
-    // Create Amplify App for Next.js hosting
-    const amplifyApp = new amplify.App(this, 'CostExplorerApp', {
-      appName: 'cloud-cost-explorer',
-      description: 'Cost Explorer Cloud Application',
-      sourceCodeProvider: sourceCodeProvider,
-      platform: amplify.Platform.WEB_COMPUTE, // Enable SSR for Next.js
-      environmentVariables: {
-        DATABASE_URL: `postgresql://postgres:\${aws_secretsmanager.get_secret_value(${database.secret?.secretArn}).password}@${database.instanceEndpoint.hostname}:5432/costexplorer`,
-        NEXT_PUBLIC_DATABASE_HOST: database.instanceEndpoint.hostname,
-        NODE_ENV: 'production',
-      },
-      buildSpec: codebuild.BuildSpec.fromObjectToYaml({
-        version: '1.0',
-        applications: [
-          {
-            appRoot: 'app',
-            frontend: {
-              phases: {
-                preBuild: {
-                  commands: [
-                    'nvm use 20',
-                    'node --version',
-                    'npm --version',
-                    'npm ci',
-                  ],
-                },
-                build: {
-                  commands: [
-                    'npm run build',
-                  ],
-                },
-              },
-              artifacts: {
-                baseDirectory: '.',
-                files: ['**/*'],
-              },
-              cache: {
-                paths: ['node_modules/**/*'],
-              },
-            },
-          },
-        ],
-      }),
-      // Custom rules for Next.js SPA routing
-      customRules: [
-        {
-          source: '/<*>',
-          target: '/index.html',
-          status: amplify.RedirectStatus.NOT_FOUND_REWRITE,
-        },
-      ],
-      // Auto branch deletion to manage resources
-      autoBranchDeletion: true,
-    });
-
-    // Add main branch for production
-    const mainBranch = amplifyApp.addBranch('main', {
-      stage: 'PRODUCTION',
-      autoBuild: true,
-      environmentVariables: {
-        DATABASE_URL: `postgresql://postgres:\${aws_secretsmanager.get_secret_value(${database.secret?.secretArn}).password}@${database.instanceEndpoint.hostname}:5432/costexplorer`,
-      },
-    });
-
-    // Create IAM role for Amplify to access database secrets
-    const amplifyRole = new iam.Role(this, 'AmplifyServiceRole', {
-      assumedBy: new iam.ServicePrincipal('amplify.amazonaws.com'),
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess-Amplify'),
-      ],
-      inlinePolicies: {
-        SecretsManagerAccess: new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: [
-                'secretsmanager:GetSecretValue',
-                'secretsmanager:DescribeSecret',
-              ],
-              resources: [database.secret?.secretArn || '*'],
-            }),
-          ],
-        }),
-      },
-    });
-
-    // Note: IAM role attachment will be done manually in the Amplify console
-    // The alpha CDK construct doesn't fully support automatic role attachment yet
-
     // Outputs
     new cdk.CfnOutput(this, 'DatabaseEndpoint', { 
       value: database.instanceEndpoint.hostname,
@@ -170,25 +71,15 @@ class CostExplorerCloudStack extends cdk.Stack {
       value: database.secret?.secretArn || 'No secret',
       description: 'RDS secret ARN'
     });
-    
-    new cdk.CfnOutput(this, 'AmplifyAppId', { 
-      value: amplifyApp.appId,
-      description: 'Amplify App ID'
-    });
-    
-    new cdk.CfnOutput(this, 'AmplifyURL', { 
-      value: `https://main.${amplifyApp.defaultDomain}`,
-      description: 'Amplify App URL'
+
+    new cdk.CfnOutput(this, 'VpcId', {
+      value: vpc.vpcId,
+      description: 'VPC ID for the database'
     });
 
-    new cdk.CfnOutput(this, 'GitHubSetupInstructions', {
-      value: 'Create a GitHub personal access token with repo permissions and store it in AWS Secrets Manager with the name "github-oauth-token"',
-      description: 'GitHub setup instructions'
-    });
-
-    new cdk.CfnOutput(this, 'AmplifyRoleArn', {
-      value: amplifyRole.roleArn,
-      description: 'Amplify service role ARN (attach manually in Amplify console)'
+    new cdk.CfnOutput(this, 'DatabaseSecurityGroupId', {
+      value: dbSecurityGroup.securityGroupId,
+      description: 'Security Group ID for database access'
     });
   }
 }
