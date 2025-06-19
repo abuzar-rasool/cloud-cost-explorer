@@ -1,0 +1,64 @@
+2025-06-15 17:05:23,197 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-06-15 17:05:23,217 - INFO - GCP client initialized successfully
+2025-06-15 17:05:23,217 - INFO - Fetching GCP compute pricing from Cloud Billing API...
+2025-06-15 17:05:25,552 - INFO - Fetched 127 SKUs in this batch
+2025-06-15 17:05:26,597 - INFO - Fetched 119 SKUs in this batch
+2025-06-15 17:05:27,696 - INFO - Fetched 148 SKUs in this batch
+2025-06-15 17:05:28,855 - INFO - Fetched 110 SKUs in this batch
+2025-06-15 17:05:29,435 - INFO - Fetched 113 SKUs in this batch
+2025-06-15 17:05:30,125 - INFO - Fetched 121 SKUs in this batch
+2025-06-15 17:05:30,753 - INFO - Fetched 115 SKUs in this batch
+2025-06-15 17:05:31,743 - INFO - Fetched 129 SKUs in this batch
+2025-06-15 17:05:32,796 - INFO - Fetched 128 SKUs in this batch
+2025-06-15 17:05:34,430 - INFO - Fetched 140 SKUs in this batch
+2025-06-15 17:05:35,650 - INFO - Fetched 124 SKUs in this batch
+2025-06-15 17:05:37,279 - INFO - Fetched 132 SKUs in this batch
+2025-06-15 17:05:37,926 - INFO - Fetched 118 SKUs in this batch
+2025-06-15 17:05:38,708 - INFO - Fetched 116 SKUs in this batch
+2025-06-15 17:05:40,528 - INFO - Fetched 131 SKUs in this batch
+2025-06-15 17:05:41,760 - INFO - Fetched 136 SKUs in this batch
+2025-06-15 17:05:43,008 - INFO - Fetched 115 SKUs in this batch
+2025-06-15 17:05:43,927 - INFO - Fetched 129 SKUs in this batch
+2025-06-15 17:05:44,549 - INFO - Fetched 118 SKUs in this batch
+2025-06-15 17:05:45,100 - INFO - Fetched 108 SKUs in this batch
+2025-06-15 17:05:46,323 - INFO - Fetched 114 SKUs in this batch
+2025-06-15 17:05:47,608 - INFO - Fetched 120 SKUs in this batch
+2025-06-15 17:05:49,271 - INFO - Fetched 123 SKUs in this batch
+2025-06-15 17:05:50,702 - INFO - Fetched 132 SKUs in this batch
+2025-06-15 17:05:52,268 - INFO - Fetched 130 SKUs in this batch
+2025-06-15 17:05:52,897 - INFO - Fetched 134 SKUs in this batch
+2025-06-15 17:05:53,891 - INFO - Fetched 134 SKUs in this batch
+2025-06-15 17:05:55,229 - INFO - Fetched 109 SKUs in this batch
+2025-06-15 17:05:56,253 - INFO - Fetched 125 SKUs in this batch
+2025-06-15 17:05:57,288 - INFO - Fetched 131 SKUs in this batch
+2025-06-15 17:05:58,487 - INFO - Fetched 119 SKUs in this batch
+2025-06-15 17:05:59,532 - INFO - Fetched 110 SKUs in this batch
+2025-06-15 17:06:00,551 - INFO - Fetched 110 SKUs in this batch
+2025-06-15 17:06:01,334 - INFO - Fetched 118 SKUs in this batch
+2025-06-15 17:06:02,409 - INFO - Fetched 120 SKUs in this batch
+2025-06-15 17:06:03,727 - INFO - Fetched 123 SKUs in this batch
+2025-06-15 17:06:05,291 - INFO - Fetched 120 SKUs in this batch
+2025-06-15 17:06:06,545 - INFO - Fetched 153 SKUs in this batch
+2025-06-15 17:06:07,458 - INFO - Fetched 111 SKUs in this batch
+2025-06-15 17:06:08,629 - INFO - Fetched 136 SKUs in this batch
+2025-06-15 17:06:10,361 - INFO - Fetched 107 SKUs in this batch
+2025-06-15 17:06:11,414 - INFO - Fetched 121 SKUs in this batch
+2025-06-15 17:06:12,434 - INFO - Fetched 143 SKUs in this batch
+2025-06-15 17:06:13,761 - INFO - Fetched 121 SKUs in this batch
+2025-06-15 17:06:14,444 - INFO - Fetched 115 SKUs in this batch
+2025-06-15 17:06:16,053 - INFO - Fetched 110 SKUs in this batch
+2025-06-15 17:06:17,309 - INFO - Fetched 134 SKUs in this batch
+2025-06-15 17:06:18,035 - INFO - Fetched 116 SKUs in this batch
+2025-06-15 17:06:19,189 - INFO - Fetched 133 SKUs in this batch
+2025-06-15 17:06:20,516 - INFO - Fetched 121 SKUs in this batch
+2025-06-15 17:06:21,131 - INFO - Fetched 129 SKUs in this batch
+2025-06-15 17:06:21,710 - INFO - Fetched 127 SKUs in this batch
+2025-06-15 17:06:22,928 - INFO - Fetched 117 SKUs in this batch
+2025-06-15 17:06:24,051 - INFO - Fetched 112 SKUs in this batch
+2025-06-15 17:06:25,138 - INFO - Fetched 125 SKUs in this batch
+2025-06-15 17:06:25,724 - INFO - Fetched 96 SKUs in this batch
+2025-06-15 17:06:25,724 - INFO - Total compute SKUs fetched: 6876
+2025-06-15 17:06:25,787 - INFO - Processed 41 VM instances
+2025-06-15 17:06:25,805 - INFO - Successfully saved 41 instances to data/gcp_instances.csv
+2025-06-15 17:06:25,805 - WARNING - Found 41 instances with invalid memory
+2025-06-15 17:06:25,806 - WARNING - GCP pricing data fetched but validation issues found

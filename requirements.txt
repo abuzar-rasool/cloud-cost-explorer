@@ -16,3 +16,7 @@ requests==2.32.3
 python-dotenv==1.1.0
 prisma==0.10.0
 psycopg2-binary==2.9.9
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-cloud-billing
