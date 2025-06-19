@@ -86,7 +86,7 @@ class CostExplorerCloudStack extends cdk.Stack {
         version: '1.0',
         applications: [
           {
-            appRoot: 'app', // Your Next.js app is in the @/app directory
+            appRoot: 'app',
             frontend: {
               phases: {
                 preBuild: {
@@ -104,7 +104,7 @@ class CostExplorerCloudStack extends cdk.Stack {
                 },
               },
               artifacts: {
-                baseDirectory: '.next',
+                baseDirectory: '.',
                 files: ['**/*'],
               },
               cache: {
