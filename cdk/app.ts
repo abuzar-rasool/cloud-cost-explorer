@@ -5,7 +5,6 @@ import * as rds from "aws-cdk-lib/aws-rds";
 import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as ecsPatterns from "aws-cdk-lib/aws-ecs-patterns";
 import * as ecr from "aws-cdk-lib/aws-ecr";
-import * as iam from "aws-cdk-lib/aws-iam";
 import * as logs from "aws-cdk-lib/aws-logs";
 
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
@@ -161,9 +160,10 @@ class CostExplorerCloudStack extends cdk.Stack {
 
     // Scale down to 0 during off-hours (optional cost optimization)
     const scalableTarget = fargateService.service.autoScaleTaskCount({
-      minCapacity: 1,
-      maxCapacity: 2, // Free tier friendly
+      minCapacity: 0, 
+      maxCapacity: 2, 
     });
+
 
     // Outputs
     new cdk.CfnOutput(this, "DatabaseEndpoint", {
