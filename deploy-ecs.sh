@@ -25,7 +25,7 @@ AWS_REGION=$(aws configure get region || echo "us-east-1")
 echo -e "${BLUE}📋 Using AWS Account: ${AWS_ACCOUNT_ID}${NC}"
 echo -e "${BLUE}📋 Using AWS Region: ${AWS_REGION}${NC}"
 
-# # Navigate to CDK directory
+# Navigate to CDK directory
 cd cdk
 
 echo -e "${YELLOW}📦 Installing CDK dependencies...${NC}"
@@ -68,11 +68,22 @@ echo -e "${YELLOW}📤 Pushing image to ECR...${NC}"
 docker push ${ECR_URI}:latest
 
 echo -e "${YELLOW}🔄 Forcing ECS service update...${NC}"
-aws ecs update-service \
+# Get the actual service name from the cluster
+SERVICE_NAME=$(aws ecs list-services \
     --cluster cost-explorer-cluster \
-    --service CostExplorerCloudStack-FargateService* \
-    --force-new-deployment \
-    --region ${AWS_REGION} > /dev/null || echo "Service update initiated"
+    --region ${AWS_REGION} \
+    --query 'serviceArns[0]' \
+    --output text | cut -d'/' -f3 2>/dev/null || echo "")
+
+if [ ! -z "$SERVICE_NAME" ]; then
+    aws ecs update-service \
+        --cluster cost-explorer-cluster \
+        --service ${SERVICE_NAME} \
+        --force-new-deployment \
+        --region ${AWS_REGION} > /dev/null && echo "Service update initiated"
+else
+    echo "No service found in cluster - this is normal for first deployment"
+fi
 
 echo -e "${GREEN}✅ Deployment completed successfully!${NC}"
 echo ""
@@ -93,11 +104,8 @@ CLOUDFRONT_URL=$(aws cloudformation describe-stacks \
 
 if [ ! -z "$CLOUDFRONT_URL" ]; then
     echo ""
-    echo -e "${GREEN}🌐 Your secure HTTPS application is available at:${NC}"
+    echo -e "${GREEN}🌐 Your app is available at:${NC}"
     echo -e "${BLUE}   ${CLOUDFRONT_URL}${NC}"
-    echo ""
-    echo -e "${YELLOW}💡 This is your custom AWS subdomain with HTTPS enabled!${NC}"
-    echo -e "${YELLOW}   CloudFront may take 5-15 minutes to fully propagate globally.${NC}"
 else
     echo -e "${YELLOW}💡 Use the LoadBalancerURL from the outputs above to access your application.${NC}"
 fi 
