@@ -143,6 +143,14 @@ class CostExplorerCloudStack extends cdk.Stack {
     // Allow ECS to connect to database
     database.connections.allowDefaultPortFrom(service.service);
 
+    // Allow external connections to database (for development/testing)
+    // WARNING: This allows connections from anywhere - restrict IP range for production
+    database.connections.allowFrom(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(5432),
+      "Allow PostgreSQL connections from anywhere"
+    );
+
     // Outputs
     new cdk.CfnOutput(this, "DatabaseEndpoint", {
       value: database.instanceEndpoint.hostname,

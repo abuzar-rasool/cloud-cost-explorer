@@ -7,23 +7,43 @@ and saves it to a single CSV file.
 
 The script extracts the following columns:
 - provider: The cloud vendor (e.g., AWS)
-- service_code: The official product family name (e.g., AmazonS3)
 - service_name: The product name
 - storage_class: The vendor-specific tier (e.g., Standard, Glacier)
-- region: Mapped continent
+- region: Continent name (north_america, south_america, europe, asia, africa, oceania, antarctica)
 - access_tier: Standardized access tier (FREQUENT, OCCASIONAL, RARE, ARCHIVE)
 - capacity_price: Price per GiB-month
 - read_price: Price per million read operations
 - write_price: Price per million write operations
-- egress_price: Price per GiB for data egress
-- flat_item_price: Any fixed monthly fees
-- other_details: Raw JSON from the pricing API
+- flat_item_price: Price per item/object flat fee
+- other_details: All pricing API information in JSON format (string)
 
 USAGE:
-    python3 scripts/aws_s3_storage_pricing.py [--max-records N]
-
+    python3 scripts/clients/aws_s3_storage_pricing.py [--max-records N]
+    
     Options:
         --max-records N    Limit processing to N records (default: no limit)
+
+REQUIREMENTS:
+    - AWS credentials configured (via AWS CLI, environment variables, or IAM role)
+    - boto3 library installed
+    - Internet connection for AWS Pricing API access
+    - IAM permissions: pricing:GetProducts
+
+OUTPUT:
+    - Timestamped CSV file: data/aws_s3_storage_pricing_YYYYMMDD_HHMMSS.csv
+    - Timestamped summary file: data/aws_s3_storage_pricing_summary_YYYYMMDD_HHMMSS.txt
+
+FILTERS APPLIED:
+    - API-level filter: productFamily = "Storage", "API Request", "Data Transfer", "Fee"
+    - Post-processing filter: Only OnDemand pricing terms
+    - Post-processing filter: Only items with valid USD capacity pricing
+    - Post-processing filter: Only items with mapped AWS regions
+    - Records without valid USD pricing are filtered out entirely
+    
+ASSUMPTIONS:
+    - Items without valid USD capacity pricing are excluded from output
+    - Items with unmapped regions are excluded from output
+    - All filtered cases are treated as normal filtering, not errors
 """
 
 import boto3
@@ -69,33 +89,35 @@ AWS_REGION_TO_CONTINENT = {
     'eu-west-2': 'europe',
     'eu-west-3': 'europe',
     
-    # Asia Pacific
-    'ap-east-1': 'asia_pacific',
-    'ap-east-2': 'asia_pacific',
-    'ap-northeast-1': 'asia_pacific',
-    'ap-northeast-2': 'asia_pacific',
-    'ap-northeast-3': 'asia_pacific',
-    'ap-south-1': 'asia_pacific',
-    'ap-south-2': 'asia_pacific',
-    'ap-southeast-1': 'asia_pacific',
-    'ap-southeast-2': 'asia_pacific',
-    'ap-southeast-3': 'asia_pacific',
-    'ap-southeast-4': 'asia_pacific',
-    'ap-southeast-5': 'asia_pacific',
-    'ap-southeast-7': 'asia_pacific',
-    
-    # Middle East
-    'me-central-1': 'middle_east',
-    'me-south-1': 'middle_east',
-    'il-central-1': 'middle_east',
+    # Asia (includes Asia Pacific and Middle East regions)
+    'ap-east-1': 'asia',
+    'ap-east-2': 'asia',
+    'ap-northeast-1': 'asia',
+    'ap-northeast-2': 'asia',
+    'ap-northeast-3': 'asia',
+    'ap-south-1': 'asia',
+    'ap-south-2': 'asia',
+    'ap-southeast-1': 'asia',
+    'ap-southeast-2': 'asia',
+    'ap-southeast-3': 'asia',
+    'ap-southeast-4': 'asia',
+    'ap-southeast-5': 'asia',
+    'ap-southeast-7': 'asia',
+    'me-central-1': 'asia',  # Middle East -> Asia
+    'me-south-1': 'asia',    # Middle East -> Asia
+    'il-central-1': 'asia',  # Israel -> Asia
+    'cn-north-1': 'asia',    # China -> Asia
+    'cn-northwest-1': 'asia', # China -> Asia
     
     # Africa
     'af-south-1': 'africa',
     'af-south-1-los-1': 'africa',
     
-    # China
-    'cn-north-1': 'asia_pacific',
-    'cn-northwest-1': 'asia_pacific',
+    # Oceania (no AWS regions currently, but ready for future)
+    # 'ap-southeast-6': 'oceania',  # Future Australia East or similar
+    
+    # Antarctica (no AWS regions currently, but ready for future)
+    # No regions mapped yet
 }
 
 AWS_LOCATION_TO_REGION_CODE = {
@@ -157,37 +179,62 @@ class AWSStoragePricingExtractor:
         self.summary_file_path = self.data_dir / f"aws_s3_storage_pricing_summary_{timestamp}.txt"
         
         self.csv_columns = [
-            'provider', 'service_code', 'service_name', 'storage_class', 'region', 
+            'provider_name', 'service_name', 'storage_class', 'region', 
             'access_tier', 'capacity_price', 'read_price', 'write_price',
             'flat_item_price', 'other_details'
         ]
         
+        self.storage_records_map = {}
         self.max_records = max_records
-        self.batch_size = 200
         self.total_records = 0
+        
+        # Statistics tracking
         self.pages_processed = 0
         self.items_seen = 0
         self.items_filtered_out = 0
         self.items_with_errors = 0
-        self.unmapped_regions = {}
+        self.unmapped_regions = set()
+        self.no_ondemand_terms = 0
+        self.no_valid_pricing = 0
         
-        # This map will hold the final records as they are being built.
-        # Key: (continent, volumeType), Value: record_dictionary
-        self.storage_records_map = {}
-        
-        # Detailed filtering reasons tracking
-        self.filtering_reasons = {
-            'no_on_demand_terms': 0,
-            'unmapped_region': 0,
-            'no_valid_pricing': 0
+        # Detailed statistics by product family
+        self.family_stats = {
+            'Storage': {
+                'seen': 0,
+                'processed': 0,
+                'created_records': 0,
+                'no_capacity_price': 0,
+                'missing_gb_mo_unit': 0,
+                'no_ondemand_terms': 0,
+                'skipped_no_usd_pricing': 0
+            },
+            'API Request': {
+                'seen': 0,
+                'processed': 0,
+                'enrichments_applied': 0,
+                'read_operations': 0,
+                'write_operations': 0,
+                'unknown_operations': 0
+            },
+            'Data Transfer': {
+                'seen': 0,
+                'processed': 0,
+                'skipped': 0
+            },
+            'Fee': {
+                'seen': 0,
+                'processed': 0,
+                'enrichments_applied': 0
+            }
         }
         
+        self.batch_size = 200
         self.local_zone_pattern = re.compile(r'^([a-z0-9-]+)-[a-z]{3,4}-\d+$')
         self.wavelength_zone_pattern = re.compile(r'^([a-z0-9-]+)-wl\d+(?:-[a-z0-9]+)?$')
         
         logger.info(f"Creating new CSV file: {self.csv_file_path}")
         with open(self.csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=self.csv_columns, quoting=csv.QUOTE_ALL)
+            writer = csv.DictWriter(csvfile, fieldnames=self.csv_columns, quoting=csv.QUOTE_NONNUMERIC)
             writer.writeheader()
             
         if self.max_records:
@@ -317,6 +364,8 @@ class AWSStoragePricingExtractor:
             return f"{base_name} - {storage_class}"
 
     def process_storage_item(self, price_item: Dict[str, Any]):
+        self.family_stats['Storage']['seen'] += 1
+        
         try:
             attributes = price_item.get('product', {}).get('attributes', {})
             volume_type = attributes.get('volumeType')
@@ -333,59 +382,84 @@ class AWSStoragePricingExtractor:
             region_code = AWS_LOCATION_TO_REGION_CODE.get(location)
             if not region_code:
                 if location not in self.unmapped_regions:
-                    self.unmapped_regions[location] = 0
-                self.unmapped_regions[location] += 1
+                    self.unmapped_regions.add(location)
                 return
 
-            continent = self.get_continent_from_region(region_code)
-            if not continent:
+            self.family_stats['Storage']['processed'] += 1
+
+            # Try to extract capacity price from this storage item FIRST
+            on_demand_terms = self.get_on_demand_terms(price_item)
+            if not on_demand_terms:
+                self.family_stats['Storage']['no_ondemand_terms'] += 1
                 return
+
+            # Look for capacity pricing (GB-Mo) - must have valid USD pricing to proceed
+            capacity_price = None
+            has_gb_mo_unit = False
             
-            # Use a composite key of continent and storage class for broader matching
-            record_key = (continent, storage_class)
+            for term in on_demand_terms.values():
+                # Check if it's a valid capacity price (GB-Mo)
+                for dim in term.get("priceDimensions", {}).values():
+                    unit = dim.get('unit', '').lower()
+                    if 'gb-mo' in unit:
+                        has_gb_mo_unit = True
+                        price = self.extract_price(term.get("priceDimensions", {}))
+                        if price is not None and price > 0:
+                            capacity_price = price
+                            logger.debug(f"Found capacity price for {region_code}-{storage_class}: ${price:.6f}/GB-Mo")
+                            break
+                
+                if capacity_price is not None:
+                    break
+
+            # Skip record creation if no valid USD capacity pricing found
+            if capacity_price is None:
+                if has_gb_mo_unit:
+                    self.family_stats['Storage']['no_capacity_price'] += 1
+                    logger.debug(f"Skipping {region_code}-{storage_class}: Has GB-Mo unit but no valid USD price")
+                else:
+                    self.family_stats['Storage']['missing_gb_mo_unit'] += 1
+                    logger.debug(f"Skipping {region_code}-{storage_class}: No GB-Mo unit found")
+                
+                # Count total skipped due to no USD pricing
+                self.family_stats['Storage']['skipped_no_usd_pricing'] += 1
+                return
+
+            # Only create record if we have valid USD capacity pricing
+            record_key = (region_code, storage_class)
 
             # Create a base record if it doesn't exist
             if record_key not in self.storage_records_map:
                 service_name = self.get_service_name(attributes)
-                
+                access_tier = self.map_access_tier(storage_class)
+
                 self.storage_records_map[record_key] = {
-                    'provider': 'AWS',
-                    'service_code': attributes.get("servicecode"),
+                    'provider_name': 'AWS',
                     'service_name': service_name,
                     'storage_class': storage_class,
-                    'region': continent,
-                    'access_tier': self.map_access_tier(storage_class),
-                    'capacity_price': None,
+                    'region': region_code,
+                    'access_tier': access_tier,
+                    'capacity_price': capacity_price,  # Set the valid price we found
                     'read_price': None,
                     'write_price': None,
                     'flat_item_price': None,
-                    'other_details': json.dumps({"pricing_api": price_item.get('product')})
+                    'other_details': json.dumps({"pricing_api": attributes}, separators=(',', ':'), default=str, ensure_ascii=True)
                 }
+                self.family_stats['Storage']['created_records'] += 1
+                logger.debug(f"Created record for {region_code}-{storage_class} with capacity price ${capacity_price:.6f}")
+            else:
+                # Record exists, update capacity price if current is None
+                if self.storage_records_map[record_key]['capacity_price'] is None:
+                    self.storage_records_map[record_key]['capacity_price'] = capacity_price
+                    logger.debug(f"Updated capacity price for {region_code}-{storage_class}: ${capacity_price:.6f}/GB-Mo")
 
-            # Add capacity pricing
-            on_demand_terms = self.get_on_demand_terms(price_item)
-            if not on_demand_terms:
-                return
-
-            for term in on_demand_terms.values():
-                price = self.extract_price(term.get("priceDimensions", {}))
-                
-                # Check if it's a valid capacity price (GB-Mo)
-                is_capacity_price = False
-                for dim in term.get("priceDimensions", {}).values():
-                    if 'gb-mo' in dim.get('unit', '').lower():
-                        is_capacity_price = True
-                        break
-                
-                if price is not None and is_capacity_price:
-                    # Only update if not already set, to avoid overwriting with tiered pricing
-                    if self.storage_records_map[record_key]['capacity_price'] is None:
-                        self.storage_records_map[record_key]['capacity_price'] = price
-                    break # Assume first price is the base price
         except Exception as e:
-            logger.warning(f"Could not process storage item: {price_item.get('product', {}).get('sku')} - {e}")
+            self.items_with_errors += 1
+            logger.error(f"Error processing storage item: {e}")
 
     def process_api_request_item(self, price_item: Dict[str, Any]):
+        self.family_stats['API Request']['seen'] += 1
+        
         attributes = price_item.get('product', {}).get('attributes', {})
         on_demand_terms = self.get_on_demand_terms(price_item)
         if not on_demand_terms:
@@ -476,6 +550,8 @@ class AWSStoragePricingExtractor:
         if price_per_million == 0:
             return
 
+        self.family_stats['API Request']['processed'] += 1
+
         operation = attributes.get('operation', '').lower()
         group = attributes.get('group', '')
         location = attributes.get('location')
@@ -495,29 +571,37 @@ class AWSStoragePricingExtractor:
         if operation:
             if any(op in operation for op in ['put', 'copy', 'post', 'upload']):
                 price_key = 'write_price'
+                self.family_stats['API Request']['write_operations'] += 1
             elif any(op in operation for op in ['get', 'select', 'head', 'retrieve']):
                 price_key = 'read_price'
+                self.family_stats['API Request']['read_operations'] += 1
             elif 'list' in operation:
                 # LIST operations are typically considered write operations in S3 billing
                 price_key = 'write_price'
+                self.family_stats['API Request']['write_operations'] += 1
         
         # Check usage type if operation didn't match
         if not price_key and usage_type:
             # More specific patterns for AWS S3 usage types
             if any(pattern in usage_type for pattern in ['put', 'copy', 'post', 'upload', 'list', 'requests-tier1', '-put-', '-copy-']):
                 price_key = 'write_price'
+                self.family_stats['API Request']['write_operations'] += 1
             elif any(pattern in usage_type for pattern in ['get', 'select', 'head', 'retrieve', 'requests-tier2', '-get-', '-select-']):
                 price_key = 'read_price'
+                self.family_stats['API Request']['read_operations'] += 1
         
         # Check group description as fallback
         if not price_key and group:
             group_desc = attributes.get('groupDescription', '').lower()
             if any(op in group_desc for op in ['put', 'post', 'copy', 'delete', 'list', 'upload']):
                 price_key = 'write_price'
+                self.family_stats['API Request']['write_operations'] += 1
             elif any(op in group_desc for op in ['get', 'head', 'select', 'retrieve']):
                 price_key = 'read_price'
+                self.family_stats['API Request']['read_operations'] += 1
         
         if not price_key:
+            self.family_stats['API Request']['unknown_operations'] += 1
             logger.debug(f"Could not determine operation type for SKU {price_item.get('product', {}).get('sku')} - operation: {operation}, usage_type: {usage_type}")
             return
 
@@ -553,28 +637,37 @@ class AWSStoragePricingExtractor:
         # Apply the price to matching storage records
         matches_found = 0
         for storage_class in target_storage_classes:
-            key = (continent, storage_class)
+            key = (region_code, storage_class)
             if key in self.storage_records_map:
                 current_price = self.storage_records_map[key][price_key]
                 if current_price is None or abs(current_price - price_per_million) > 0.000001:  # Only update if different
                     self.storage_records_map[key][price_key] = price_per_million
                     matches_found += 1
-                    logger.debug(f"Updated {price_key} for {continent}-{storage_class}: ${price_per_million:.6f}")
+                    logger.debug(f"Updated {price_key} for {region_code}-{storage_class}: ${price_per_million:.6f}")
+        
+        # Track enrichment if any matches were found
+        if matches_found > 0:
+            self.family_stats['API Request']['enrichments_applied'] += matches_found
         
         # If no specific matches, apply to General Purpose as fallback
         if matches_found == 0:
-            fallback_key = (continent, 'General Purpose')
+            fallback_key = (region_code, 'General Purpose')
             if fallback_key in self.storage_records_map:
                 current_price = self.storage_records_map[fallback_key][price_key]
                 if current_price is None:
                     self.storage_records_map[fallback_key][price_key] = price_per_million
-                    logger.debug(f"Applied {price_key} to fallback {continent}-General Purpose: ${price_per_million:.6f}")
+                    self.family_stats['API Request']['enrichments_applied'] += 1
+                    logger.debug(f"Applied {price_key} to fallback {region_code}-General Purpose: ${price_per_million:.6f}")
 
     def process_data_transfer_item(self, price_item: Dict[str, Any]):
+        self.family_stats['Data Transfer']['seen'] += 1
         # Data transfer pricing (egress) is no longer tracked per user requirements
+        self.family_stats['Data Transfer']['skipped'] += 1
         return
 
     def process_fee_item(self, price_item: Dict[str, Any]):
+        self.family_stats['Fee']['seen'] += 1
+        
         attributes = price_item.get('product', {}).get('attributes', {})
         on_demand_terms = self.get_on_demand_terms(price_item)
         if not on_demand_terms:
@@ -591,16 +684,64 @@ class AWSStoragePricingExtractor:
         if fee_price == 0:
             return
 
+        self.family_stats['Fee']['processed'] += 1
+
         location = attributes.get('location')
+        usage_type = attributes.get('usagetype', '').lower()
+        group = attributes.get('group', '').lower()
+        group_description = attributes.get('groupDescription', '').lower()
+        
         region_code = AWS_LOCATION_TO_REGION_CODE.get(location)
         continent = self.get_continent_from_region(region_code)
         if not continent: return
 
-        # This is a broad update - apply fee to ALL storage types in the continent
-        for key, record in self.storage_records_map.items():
-            if key[0] == continent:
-                if record['flat_item_price'] is None:
-                    record['flat_item_price'] = fee_price
+        # Determine which storage classes this fee applies to based on usage type and other attributes
+        target_storage_classes = []
+        
+        # Map fees to specific storage classes based on usage type patterns
+        if any(pattern in usage_type for pattern in ['sia', 'infrequent']):
+            target_storage_classes.append('Infrequent Access')
+        elif any(pattern in usage_type for pattern in ['zia', 'onezone']):
+            target_storage_classes.append('Infrequent Access')  # One Zone IA
+        elif any(pattern in usage_type for pattern in ['gir', 'glacier-ir', 'instantretrieval']):
+            target_storage_classes.append('Archive Instant Retrieval')
+        elif any(pattern in usage_type for pattern in ['gda', 'glacier-da', 'deep-archive', 'deeparchive']):
+            target_storage_classes.append('Archive')
+        elif 'glacier' in usage_type and 'gir' not in usage_type and 'gda' not in usage_type:
+            target_storage_classes.append('Archive')
+        elif any(pattern in usage_type for pattern in ['int', 'intelligent']):
+            target_storage_classes.append('Intelligent-Tiering')
+        elif any(pattern in usage_type for pattern in ['standard', 'std']):
+            target_storage_classes.append('General Purpose')
+        elif any(pattern in usage_type for pattern in ['express', 'xz']):
+            target_storage_classes.append('High Performance')
+        elif any(pattern in usage_type for pattern in ['rrs', 'reduced']):
+            target_storage_classes.append('Non-Critical Data')
+        else:
+            # Check group and group description for additional hints
+            if any(pattern in group for pattern in ['intelligent', 'int']):
+                target_storage_classes.append('Intelligent-Tiering')
+            elif any(pattern in group_description for pattern in ['glacier', 'archive']):
+                target_storage_classes.extend(['Archive', 'Archive Instant Retrieval'])
+            elif any(pattern in group_description for pattern in ['infrequent', 'ia']):
+                target_storage_classes.append('Infrequent Access')
+            else:
+                # If we can't determine the specific storage class, apply to most common classes
+                # but avoid applying to all classes (which was the previous problematic behavior)
+                target_storage_classes = ['General Purpose', 'Infrequent Access']
+
+        # Apply the fee to matching storage records only
+        enriched_count = 0
+        for storage_class in target_storage_classes:
+            key = (region_code, storage_class)
+            if key in self.storage_records_map:
+                current_price = self.storage_records_map[key]['flat_item_price']
+                if current_price is None:
+                    self.storage_records_map[key]['flat_item_price'] = fee_price
+                    enriched_count += 1
+                    logger.debug(f"Applied fee ${fee_price:.6f} to {region_code}-{storage_class}")
+        
+        self.family_stats['Fee']['enrichments_applied'] += enriched_count
 
     def append_batch_to_csv(self, data_batch: List[Dict[str, Any]]) -> bool:
         if not data_batch:
@@ -613,24 +754,35 @@ class AWSStoragePricingExtractor:
             if len(data_batch) > remaining_slots:
                 records_to_write = data_batch[:remaining_slots]
         
-        # Format numeric fields to avoid scientific notation
+        # Format numeric fields to avoid scientific notation and convert region codes to continent names
         formatted_records = []
         for record in records_to_write:
             formatted_record = record.copy()
-            # Format price fields to ensure no scientific notation
+            
+            # Convert region code back to continent name for display
+            region_code = formatted_record.get('region')
+            if region_code:
+                continent = self.get_continent_from_region(region_code)
+                if continent:
+                    formatted_record['region'] = continent
+            
+            # Ensure price fields are numeric (float) values, not strings
             for price_field in ['capacity_price', 'read_price', 'write_price', 'flat_item_price']:
-                if formatted_record.get(price_field) is not None:
+                value = formatted_record.get(price_field)
+                if value is not None and value != "":
                     try:
-                        # Convert to float and format with up to 6 decimal places, removing trailing zeros
-                        price_value = float(formatted_record[price_field])
-                        formatted_record[price_field] = f"{price_value:.6f}".rstrip('0').rstrip('.')
+                        # Ensure the value is a float, not a string
+                        formatted_record[price_field] = float(value)
                     except (ValueError, TypeError):
-                        # Keep original value if formatting fails
+                        # Keep original value if conversion fails
                         pass
+                else:
+                    # Set empty values to empty string for proper CSV formatting
+                    formatted_record[price_field] = ""
             formatted_records.append(formatted_record)
             
         with open(self.csv_file_path, 'a', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=self.csv_columns, quoting=csv.QUOTE_ALL)
+            writer = csv.DictWriter(csvfile, fieldnames=self.csv_columns, quoting=csv.QUOTE_NONNUMERIC)
             writer.writerows(formatted_records)
         
         self.total_records += len(records_to_write)
@@ -642,32 +794,78 @@ class AWSStoragePricingExtractor:
         return True
 
     def write_progress_summary(self):
-        """Writes a summary of the extraction process to a text file."""
-        # For debugging the counters
-        logger.info(f"Final counts: Pages={self.pages_processed}, Items={self.items_seen}")
+        summary_content = f"""AWS S3 Storage Pricing Extraction Summary
+=============================================
+Last Updated: {datetime.now()}
+Pages processed: {self.pages_processed}
+Items seen: {self.items_seen}
+Items filtered: {self.items_filtered_out}
+Items with errors: {self.items_with_errors}
+Valid records found: {len(self.storage_records_map)}
+CSV file: {self.csv_file_path.name}
+
+=========================
+DETAILED BREAKDOWN BY PRODUCT FAMILY:
+
+Storage Items:
+  - Items seen: {self.family_stats['Storage']['seen']}
+  - Items processed: {self.family_stats['Storage']['processed']}
+  - Base records created: {self.family_stats['Storage']['created_records']}
+  - Items skipped (no USD pricing): {self.family_stats['Storage']['skipped_no_usd_pricing']}
+  
+  Capacity Price Issues:
+    - Records with no capacity price: {self.family_stats['Storage']['no_capacity_price']}
+    - Missing ondemand terms: {self.family_stats['Storage']['no_ondemand_terms']}
+    - Missing GB-Mo unit: {self.family_stats['Storage']['missing_gb_mo_unit']}
+
+API Request Items:
+  - Items seen: {self.family_stats['API Request']['seen']}
+  - Items processed: {self.family_stats['API Request']['processed']}
+  - Storage records enriched: {self.family_stats['API Request']['enrichments_applied']}
+  
+  Operation Type Breakdown:
+    - Read operations (GET, HEAD, SELECT): {self.family_stats['API Request']['read_operations']}
+    - Write operations (PUT, POST, COPY, LIST): {self.family_stats['API Request']['write_operations']}
+    - Unknown/unparseable operations: {self.family_stats['API Request']['unknown_operations']}
+
+Data Transfer Items:
+  - Items seen: {self.family_stats['Data Transfer']['seen']}
+  - Items processed: {self.family_stats['Data Transfer']['processed']}
+  - Items skipped (by design): {self.family_stats['Data Transfer']['skipped']}
+
+Fee Items:
+  - Items seen: {self.family_stats['Fee']['seen']}
+  - Items processed: {self.family_stats['Fee']['processed']}
+  - Storage records enriched: {self.family_stats['Fee']['enrichments_applied']}
+
+=========================
+CONSOLIDATION EXPLANATION:
+The large difference between "Items seen" ({self.items_seen}) and "Valid records found" ({len(self.storage_records_map)}) 
+is expected and correct. Here's why:
+
+1. ARCHITECTURE: Two-pass processing
+   - Pass 1: Storage items CREATE base records (1 per region+storage_class combination)
+   - Pass 2: API/Fee items ENRICH existing records with pricing data
+
+2. CONSOLIDATION: Multiple pricing items combine into single records
+   - Example: 50 different API pricing SKUs for "us-east-1 + General Purpose" 
+   - Result: 1 final record with complete pricing (capacity + read + write + fees)
+
+3. DATA TRANSFER: Items are intentionally skipped ({self.family_stats['Data Transfer']['skipped']} items)
+
+4. FINAL RESULT: {len(self.storage_records_map)} unique storage options across all regions and storage classes
+
+=========================
+No OnDemand terms: {self.no_ondemand_terms}
+Unmapped regions: {len(self.unmapped_regions)}
+No valid pricing: {self.no_valid_pricing}
+
+"""
         
-        summary_content = (
-            f"AWS S3 Storage Pricing Extraction Summary\n"
-            f"=============================================\n"
-            f"Last Updated: {datetime.now()}\n"
-            f"Pages processed: {self.pages_processed}\n"
-            f"Items seen: {self.items_seen}\n"
-            f"Items filtered: {self.items_filtered_out}\n"
-            f"Items with errors: {self.items_with_errors}\n"
-            f"Valid records found: {self.total_records}\n"
-            f"CSV file: {self.csv_file_path}\n\n"
-            f"=========================\n"
-            f"No OnDemand terms: {self.filtering_reasons['no_on_demand_terms']}\n"
-            f"Unmapped regions: {len(self.unmapped_regions)} ({sum(self.unmapped_regions.values())} items)\n"
-            f"No valid pricing: {self.filtering_reasons['no_valid_pricing']}\n"
-        )
-        
-        # Add detailed unmapped regions information
         if self.unmapped_regions:
-            summary_content += f"\nUnmapped Regions Details:\n"
-            summary_content += f"========================\n"
-            for location, count in sorted(self.unmapped_regions.items(), key=lambda x: x[1], reverse=True):
-                summary_content += f"{location}: {count} items\n"
+            summary_content += "\nUnmapped Regions Details:\n"
+            for location in sorted(self.unmapped_regions):
+                summary_content += f"  {location}: region not mapped\n"
         
         try:
             with open(self.summary_file_path, 'w') as f:
@@ -677,8 +875,8 @@ class AWSStoragePricingExtractor:
             # Also log the unmapped regions to console for debugging
             if self.unmapped_regions:
                 logger.warning("Unmapped regions found:")
-                for location, count in sorted(self.unmapped_regions.items(), key=lambda x: x[1], reverse=True):
-                    logger.warning(f"  {location}: {count} items")
+                for location in sorted(self.unmapped_regions):
+                    logger.warning(f"  {location}: region not mapped")
         except IOError as e:
             logger.error(f"Error writing summary file: {e}")
 
