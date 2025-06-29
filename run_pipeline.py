@@ -9,8 +9,8 @@ import argparse
 import asyncio
 import os
 import sys
-from app.utils.db_config import format_connection_string
-from app.pipeline import run_pipeline
+from scripts.utils.db_config import format_connection_string
+from scripts.pipeline import run_pipeline
 
 
 def parse_args():

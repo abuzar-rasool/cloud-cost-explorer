@@ -7,3 +7,4 @@
 cdk/cdk.out/
 cdk/node_modules/
 data/
+__pycache__/

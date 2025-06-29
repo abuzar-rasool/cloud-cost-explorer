@@ -8,7 +8,7 @@ It can be run independently of the main pipeline.
 import os
 import subprocess
 import sys
-from app.utils.db_config import get_database_url, get_connection_params, format_connection_string
+from scripts.utils.db_config import get_database_url, get_connection_params, format_connection_string
 
 
 def setup_database():

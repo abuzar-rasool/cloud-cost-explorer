@@ -1,11 +1,12 @@
 import asyncio
 import os
 import time
+import glob
 from typing import Optional
 from prisma import Prisma
-from app.utils.db_config import get_database_url, get_connection_params, format_connection_string
-from app.utils.csv_loader import CSVBatchLoader
-from app.utils.transform_data_types import transform_vm_data
+from scripts.utils.db_config import get_database_url, get_connection_params, format_connection_string
+from scripts.utils.csv_loader import CSVBatchLoader
+from scripts.utils.transform_data_types import transform_vm_data, transform_storage_data
 
 class DatabaseConnection:
     def __init__(self, connection_url: Optional[str] = None):
@@ -88,6 +89,7 @@ async def run_pipeline():
     try:
         # delete all data from the source table
         await prisma.ondemandvmpricing.delete_many()
+        await prisma.storagepricing.delete_many()
         
         # Pipeline starts here and generates csvs for each provider
         # TODO: Implement pipeline
@@ -95,45 +97,52 @@ async def run_pipeline():
         # Initialize CSV batch loader
         csv_loader = CSVBatchLoader(prisma, batch_size=200)
         
-        # Define CSV file paths
+        # Define data directory
         data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
-        aws_csv_path = os.path.join(data_dir, 'aws_instances.csv')
-        gcp_csv_path = os.path.join(data_dir, 'gcp_instances.csv')
-        azure_csv_path = os.path.join(data_dir, 'azure_instances.csv')
         
+        # Scan for all CSV files in the data directory
+        all_csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
         
-        # Check if CSV files exist and load data in parallel
-        csv_configs = []
+        # Categorize CSV files based on their endings
+        instances_configs = []
+        storage_configs = []
         
-        if os.path.exists(aws_csv_path):
-            csv_configs.append({
-                'file_path': aws_csv_path,
-                'model_name': 'ondemandvmpricing',
-                'transform_func': transform_vm_data
-            })
+        for csv_file in all_csv_files:
+            filename = os.path.basename(csv_file)
             
-        if os.path.exists(gcp_csv_path):
-            csv_configs.append({
-                'file_path': gcp_csv_path,
-                'model_name': 'ondemandvmpricing',
-                'transform_func': transform_vm_data
-            })
+            if filename.endswith('instances.csv'):
+                instances_configs.append({
+                    'file_path': csv_file,
+                    'model_name': 'ondemandvmpricing',
+                    'transform_func': transform_vm_data
+                })
+                print(f"Found instances file: {filename}")
+                
+            elif filename.endswith('storage.csv'):
+                storage_configs.append({
+                    'file_path': csv_file,
+                    'model_name': 'storagepricing',
+                    'transform_func': transform_storage_data
+                })
+                print(f"Found storage file: {filename}")
+        
+        # Combine all configurations
+        all_csv_configs = instances_configs + storage_configs
+        
+        if all_csv_configs:
+            print(f"\nLoading data from {len(all_csv_configs)} CSV files...")
+            print(f"- {len(instances_configs)} instances files -> ondemandvmpricing table")
+            print(f"- {len(storage_configs)} storage files -> storagepricing table")
             
-        if os.path.exists(azure_csv_path):
-            csv_configs.append({
-                'file_path': azure_csv_path,
-                'model_name': 'ondemandvmpricing',
-                'transform_func': transform_vm_data
-            })
+            results = await csv_loader.load_multiple_csvs(all_csv_configs)
             
-        if csv_configs:
-            print("Loading data from CSV files...")
-            results = await csv_loader.load_multiple_csvs(csv_configs)
-            
+            print("\nLoad Results:")
             for file_path, count in results.items():
-                print(f"Loaded {count} records from {os.path.basename(file_path)}")
+                filename = os.path.basename(file_path)
+                table = "ondemandvmpricing" if filename.endswith('instances.csv') else "storagepricing"
+                print(f"Loaded {count} records from {filename} -> {table}")
         else:
-            print("No CSV files found. Using sample data instead.")
+            print("No CSV files found in the data directory.")
 
     finally:
         await db.disconnect()

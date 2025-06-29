@@ -31,6 +31,13 @@ enum Region {
   antarctica
 }
 
+enum Access_Tiers {
+  FREQUENT_ACCESS
+  OCCASIONAL_ACCESS
+  RARE_ACCESS
+  ARCHIVE
+}
+
 model OnDemandVMPricing {
   id        Int      @id @default(autoincrement())
   vm_name    String
@@ -49,4 +56,22 @@ model OnDemandVMPricing {
   updatedAt DateTime @updatedAt
 
   @@map("on-demand-vm-pricing")
+}
+
+model StoragePricing {
+  id Int @id @default(autoincrement())
+  provider_name Provider
+  service_name String
+  storage_class String
+  region Region
+  access_tier Access_Tiers
+  capacity_price Float?
+  read_price Float?
+  write_price Float?
+  flat_item_price Float?
+  other_details Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("storage-pricing")
 }
