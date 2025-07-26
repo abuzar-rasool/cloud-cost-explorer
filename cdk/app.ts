@@ -35,7 +35,10 @@ class CostExplorerCloudStack extends cdk.Stack {
       engine: rds.DatabaseInstanceEngine.postgres({
         version: rds.PostgresEngineVersion.VER_15_8,
       }),
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO), // Free tier
+      instanceType: ec2.InstanceType.of(
+        ec2.InstanceClass.T3,
+        ec2.InstanceSize.MICRO
+      ), // Free tier
       vpc,
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
@@ -48,6 +51,14 @@ class CostExplorerCloudStack extends cdk.Stack {
       deletionProtection: false,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       publiclyAccessible: true,
+      parameterGroup: new rds.ParameterGroup(this, "ParameterGroup", {
+        engine: rds.DatabaseInstanceEngine.postgres({
+          version: rds.PostgresEngineVersion.VER_15_8,
+        }),
+        parameters: {
+          "rds.force_ssl": "0", // Disable forced SSL
+        },
+      }),
     });
 
     // ECR Repository
@@ -69,7 +80,10 @@ class CostExplorerCloudStack extends cdk.Stack {
 
     // Add EC2 capacity directly to cluster (simple approach)
     cluster.addCapacity("DefaultAutoScalingGroup", {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO), // Free tier
+      instanceType: ec2.InstanceType.of(
+        ec2.InstanceClass.T2,
+        ec2.InstanceSize.MICRO
+      ), // Free tier
       minCapacity: 1,
       maxCapacity: 1,
       vpcSubnets: {
@@ -95,8 +109,14 @@ class CostExplorerCloudStack extends cdk.Stack {
         ? {
             DB_HOST: ecs.Secret.fromSecretsManager(database.secret, "host"),
             DB_PORT: ecs.Secret.fromSecretsManager(database.secret, "port"),
-            DB_USERNAME: ecs.Secret.fromSecretsManager(database.secret, "username"),
-            DB_PASSWORD: ecs.Secret.fromSecretsManager(database.secret, "password"),
+            DB_USERNAME: ecs.Secret.fromSecretsManager(
+              database.secret,
+              "username"
+            ),
+            DB_PASSWORD: ecs.Secret.fromSecretsManager(
+              database.secret,
+              "password"
+            ),
             DB_NAME: ecs.Secret.fromSecretsManager(database.secret, "dbname"),
           }
         : {},
