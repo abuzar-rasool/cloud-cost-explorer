@@ -1,18 +1,30 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Cloud, BarChart3, Home, Menu, X, Settings } from 'lucide-react'
+import Link from "next/link";
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Cloud, BarChart3, Home, Menu, X, Settings } from "lucide-react";
 
 export function Navigation() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  
-  const currentTime = new Date().toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  })
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState<string>("");
+
+  useEffect(() => {
+    // Set initial time
+    const updateTime = () => {
+      const time = new Date().toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+      setCurrentTime(time);
+    };
+
+    updateTime(); // Set initial time
+    const interval = setInterval(updateTime, 1000); // Update every second
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <>
@@ -25,38 +37,42 @@ export function Navigation() {
               <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
                 <Cloud className="h-4 w-4 text-white" />
               </div>
-              <span className="text-base font-semibold text-white tracking-tight">Cloud Cost Explorer</span>
+              <span className="text-base font-semibold text-white tracking-tight">
+                Cloud Cost Explorer
+              </span>
             </div>
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-1">
               <Link href="/">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="sm"
                   className="text-white hover:bg-white/10 hover:text-white px-4 py-2 rounded-full font-medium"
                 >
                   Dashboard
                 </Button>
               </Link>
-              <Link href="/providers">
-                <Button 
-                  variant="ghost" 
+              <Link href="/virtual-machines">
+                <Button
+                  variant="ghost"
                   size="sm"
                   className="text-white/70 hover:bg-white/10 hover:text-white px-4 py-2 rounded-full font-medium"
                 >
-                  My providers
+                  Virtual Machines
                 </Button>
               </Link>
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="text-white/70 hover:bg-white/10 hover:text-white px-4 py-2 rounded-full font-medium"
-              >
-                Reporting
-              </Button>
-              <Button 
-                variant="ghost" 
+              <Link href="/storage">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-white/70 hover:bg-white/10 hover:text-white px-4 py-2 rounded-full font-medium"
+                >
+                  Storage
+                </Button>
+              </Link>
+              <Button
+                variant="ghost"
                 size="sm"
                 className="text-white/70 hover:bg-white/10 hover:text-white px-3 py-2 rounded-full font-medium"
               >
@@ -67,7 +83,9 @@ export function Navigation() {
             {/* Right side - Time info */}
             <div className="hidden md:flex items-center space-x-6">
               <div className="text-white/70 text-sm">
-                <span className="text-white font-medium text-lg">{currentTime}</span>
+                <span className="text-white font-medium text-lg">
+                  {currentTime}
+                </span>
                 <span className="text-white/50 ml-1 text-xs">Time</span>
               </div>
             </div>
@@ -80,7 +98,11 @@ export function Navigation() {
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 className="text-white hover:bg-white/10 p-2 rounded-full"
               >
-                {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                {isMenuOpen ? (
+                  <X className="h-5 w-5" />
+                ) : (
+                  <Menu className="h-5 w-5" />
+                )}
               </Button>
             </div>
           </div>
@@ -93,8 +115,8 @@ export function Navigation() {
           <div className="bg-black/30 backdrop-blur-md border border-white/10 rounded-2xl p-4">
             <div className="space-y-2">
               <Link href="/">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="sm"
                   className="w-full justify-start text-white hover:bg-white/10 hover:text-white rounded-xl"
                   onClick={() => setIsMenuOpen(false)}
@@ -103,27 +125,30 @@ export function Navigation() {
                   Dashboard
                 </Button>
               </Link>
-              <Link href="/providers">
-                <Button 
-                  variant="ghost" 
+              <Link href="/virtual-machines">
+                <Button
+                  variant="ghost"
                   size="sm"
                   className="w-full justify-start text-white/70 hover:bg-white/10 hover:text-white rounded-xl"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   <BarChart3 className="h-4 w-4 mr-3" />
-                  My providers
+                  Virtual Machines
                 </Button>
               </Link>
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="w-full justify-start text-white/70 hover:bg-white/10 hover:text-white rounded-xl"
-              >
-                <BarChart3 className="h-4 w-4 mr-3" />
-                Reporting
-              </Button>
-              <Button 
-                variant="ghost" 
+              <Link href="/storage">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start text-white/70 hover:bg-white/10 hover:text-white rounded-xl"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <BarChart3 className="h-4 w-4 mr-3" />
+                  Storage
+                </Button>
+              </Link>
+              <Button
+                variant="ghost"
                 size="sm"
                 className="w-full justify-start text-white/70 hover:bg-white/10 hover:text-white rounded-xl"
               >
@@ -138,5 +163,5 @@ export function Navigation() {
       {/* Spacer to prevent content from going under fixed nav */}
       <div className="h-20"></div>
     </>
-  )
-} 
+  );
+}

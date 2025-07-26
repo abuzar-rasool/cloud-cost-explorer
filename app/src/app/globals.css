@@ -18,9 +18,9 @@
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #262626;
-  --input: #262626;
-  --ring: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: rgba(255, 255, 255, 0.2);
   --radius: 0.75rem;
 }
 
@@ -44,54 +44,115 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
+
+/* Remove global border color forcing - let components use their own styles */
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  font-feature-settings: "rlig" 1, "calt" 1;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
 }
 
-/* Custom scrollbar for dark theme */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--background);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--muted);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
-}
-
-/* Modern glass effect for cards */
-.glass-card {
-  background: rgba(26, 26, 26, 0.8);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* Smooth transitions */
-* {
-  transition: all 150ms ease-in-out;
-}
-
-/* Hide default focus rings, we'll add custom ones */
+/* Remove all blue focus styles and replace with theme colors */
 *:focus {
-  outline: none;
+  outline: none !important;
+  box-shadow: 0 0 0 2px hsl(var(--ring)) !important;
 }
 
-/* Custom focus rings */
 *:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline: none !important;
+  box-shadow: 0 0 0 2px hsl(var(--ring)) !important;
+}
+
+/* Input field focus styles - more subtle */
+input:focus,
+input:focus-visible,
+select:focus,
+select:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Remove browser default blue focus styles */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px hsl(var(--input)) inset !important;
+  -webkit-text-fill-color: hsl(var(--foreground)) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Button focus styles */
+button:focus,
+button:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px hsl(var(--ring)) !important;
+}
+
+/* Select element focus styles - more subtle */
+select {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+select:focus,
+select:focus-visible {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Remove blue selection color */
+::selection {
+  background-color: hsl(var(--accent)) !important;
+  color: hsl(var(--accent-foreground)) !important;
+}
+
+::-moz-selection {
+  background-color: hsl(var(--accent)) !important;
+  color: hsl(var(--accent-foreground)) !important;
+}
+
+/* Remove any remaining blue tints */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure all form elements use theme colors with subtle styling */
+input,
+select,
+textarea {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  border-width: 1px !important;
+}
+
+/* Override any browser default styles that might show blue */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Ensure pagination buttons don't have blue focus */
+.pagination button:focus,
+.pagination button:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px hsl(var(--ring)) !important;
+}
+
+/* Remove any blue from data table elements */
+.data-table *:focus,
+.data-table *:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px hsl(var(--ring)) !important;
 }

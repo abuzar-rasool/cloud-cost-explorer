@@ -2,8 +2,6 @@ generator client {
   provider = "prisma-client-js"
 }
 
-
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -39,39 +37,70 @@ enum Access_Tiers {
 }
 
 model OnDemandVMPricing {
-  id        Int      @id @default(autoincrement())
-  vm_name    String
-  provider_name   Provider
-  virtual_cpu_count Int
-  memory_gb Float
-  cpu_arch String
+  id                 Int      @id @default(autoincrement())
+  vm_name            String
+  provider_name      Provider
+  virtual_cpu_count  Int
+  memory_gb          Float
+  cpu_arch           String
   price_per_hour_usd Float
-  gpu_count Int
-  gpu_name String?
-  gpu_memory Float
-  os_type OS_Type
-  region Region
-  other_details Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  gpu_count          Int
+  gpu_name           String?
+  gpu_memory         Float
+  os_type            OS_Type
+  region             Region
+  other_details      Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
+  // Performance indexes for common queries
+  @@index([provider_name])
+  @@index([region])
+  @@index([os_type])
+  @@index([price_per_hour_usd])
+  @@index([virtual_cpu_count])
+  @@index([memory_gb])
+  @@index([provider_name, region])
+  @@index([provider_name, os_type])
+  @@index([provider_name, price_per_hour_usd])
+  @@index([region, price_per_hour_usd])
+  @@index([os_type, price_per_hour_usd])
+  @@index([provider_name, region, os_type])
+  @@index([provider_name, region, price_per_hour_usd])
+  @@index([region, os_type, price_per_hour_usd])
   @@map("on-demand-vm-pricing")
 }
 
 model StoragePricing {
-  id Int @id @default(autoincrement())
-  provider_name Provider
-  service_name String
-  storage_class String
-  region Region
-  access_tier Access_Tiers
-  capacity_price Float?
-  read_price Float?
-  write_price Float?
+  id              Int          @id @default(autoincrement())
+  provider_name   Provider
+  service_name    String
+  storage_class   String
+  region          Region
+  access_tier     Access_Tiers
+  capacity_price  Float?
+  read_price      Float?
+  write_price     Float?
   flat_item_price Float?
-  other_details Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  other_details   Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
+  // Performance indexes for common queries
+  @@index([provider_name])
+  @@index([region])
+  @@index([storage_class])
+  @@index([access_tier])
+  @@index([capacity_price])
+  @@index([provider_name, region])
+  @@index([provider_name, storage_class])
+  @@index([provider_name, access_tier])
+  @@index([region, capacity_price])
+  @@index([storage_class, capacity_price])
+  @@index([access_tier, capacity_price])
+  @@index([provider_name, region, storage_class])
+  @@index([provider_name, region, access_tier])
+  @@index([provider_name, storage_class, access_tier])
+  @@index([region, storage_class, capacity_price])
   @@map("storage-pricing")
 }
