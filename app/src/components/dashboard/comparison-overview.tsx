@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ProviderStats } from '@/types'
-import { TrendingDown, DollarSign, Server, Zap } from 'lucide-react'
+import { TrendingDown, DollarSign, Server, Zap, Info } from 'lucide-react'
 
 interface ComparisonOverviewProps {
   providerStats: ProviderStats[]
@@ -36,6 +36,15 @@ export function ComparisonOverview({ providerStats }: ComparisonOverviewProps) {
   const minAvgPrice = avgPrices.length > 0 ? Math.min(...avgPrices) : 0
   const potentialSavings = Number((maxAvgPrice - minAvgPrice).toFixed(6))
   const savingsPercentage = maxAvgPrice > 0 ? ((potentialSavings / maxAvgPrice) * 100).toFixed(1) : '0.0'
+  
+  // Calculate monthly and yearly savings
+  const hourlyDiff = potentialSavings
+  const dailySavings = hourlyDiff * 24
+  const monthlySavings = dailySavings * 30
+  
+  // Assumptions for savings calculations
+  const assumedVMCount = 100
+  const totalPotentialMonthly = monthlySavings * assumedVMCount
 
   // Performance metrics
   const totalVMs = sortedProviderStats.reduce((sum, p) => sum + p.vm_count, 0)
@@ -117,7 +126,7 @@ export function ComparisonOverview({ providerStats }: ComparisonOverviewProps) {
             Savings Opportunities
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-5">
           <div className="text-center">
             <div className="text-3xl font-light text-white mb-1">
               {savingsPercentage}%
@@ -136,11 +145,44 @@ export function ComparisonOverview({ providerStats }: ComparisonOverviewProps) {
             </div>
             
             <div className="bg-white/5 rounded-lg p-3">
-              <div className="text-white/70 text-sm mb-1">Monthly Potential Savings</div>
+              <div className="text-white/70 text-sm mb-1">Savings Projection</div>
               <div className="text-white font-medium">
-                ${(potentialSavings * 24 * 30).toLocaleString()}
+                ${totalPotentialMonthly.toLocaleString(undefined, {maximumFractionDigits: 2})} / month
               </div>
-              <div className="text-white/50 text-xs">Based on 24/7 usage</div>
+              <div className="text-white/50 text-xs">For 100 VMs running 24/7</div>
+            </div>
+
+            {/* New section with calculation details */}
+            <div className="bg-white/5 rounded-lg p-3">
+              <div className="flex items-center gap-1 text-white/70 text-sm mb-2">
+                <Info className="h-3.5 w-3.5" />
+                <div>Calculation Method</div>
+              </div>
+              <div className="text-white/60 text-xs space-y-1">
+                <p>• Based on average price difference between highest and lowest cost providers</p>
+                <p>• Hourly: ${hourlyDiff.toFixed(3)} per VM</p>
+                <p>• Daily: ${dailySavings.toFixed(2)} per VM</p>
+                <p>• Yearly: ${(dailySavings * 365).toFixed(2)} per VM</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Assumptions section */}
+          <div className="border-t border-white/10 pt-3">
+            <div className="text-white/70 text-xs mb-2 font-medium">Key Assumptions</div>
+            <div className="text-white/60 text-xs space-y-2">
+              <div className="flex justify-between">
+                <span>• Based on comparable VM specs across providers</span>
+              </div>
+              <div className="flex justify-between">
+                <span>• Assumes constant usage (24/7)</span>
+              </div>
+              <div className="flex justify-between">
+                <span>• Excludes data transfer costs</span>
+              </div>
+              <div className="flex justify-between">
+                <span>• Doesn&apos;t account for spot/reserved pricing</span>
+              </div>
             </div>
           </div>
         </CardContent>

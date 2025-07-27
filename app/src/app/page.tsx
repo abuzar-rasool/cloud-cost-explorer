@@ -1,23 +1,49 @@
-import { Suspense } from 'react'
-import { getProviderStats, getVMComparison, getStorageComparison } from '@/services/dashboard'
+"use client";
+
+import { useState, useEffect } from 'react'
 import { ComparisonOverview } from '@/components/dashboard/comparison-overview'
-import { RegionalCostComparison } from '@/components/dashboard/regional-cost-comparison'
-import { BestValueMatrix } from '@/components/dashboard/best-value-matrix'
 import { MainCostComparisonCard } from '@/components/dashboard/main-cost-comparison-card'
 import { Navigation } from '@/components/dashboard/navigation'
+import { RegionalPricingGraph } from '@/components/dashboard/regional-pricing-graph'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Server } from 'lucide-react'
+import { Server, RefreshCw } from 'lucide-react'
+import { useProviderStats, useVMComparisonData, useStorageComparisonData } from '@/hooks/useDashboard'
+import { useRegionalPricing } from '@/hooks/useRegionalPricing'
+import { ProviderStats } from '@/types'
 
-async function DashboardContent() {
-  const [providerStats, vmData, storageData] = await Promise.all([
-    getProviderStats(),
-    getVMComparison(undefined, undefined, 50),
-    getStorageComparison(undefined, undefined, 30),
-  ])
+function DashboardContent({ refreshInterval }: { refreshInterval: number }) {
+  // Use React Query hooks for data fetching
+  const { data: providerStats, isLoading: isLoadingStats, refetch: refetchStats } = useProviderStats();
+  const { data: vmData, isLoading: isLoadingVMs, refetch: refetchVMs } = useVMComparisonData(undefined, undefined, 50);
+  const { data: storageData, isLoading: isLoadingStorage, refetch: refetchStorage } = useStorageComparisonData(undefined, undefined, 30);
+  const { data: regionalPricing, isLoading: isLoadingRegionalPricing, refetch: refetchRegionalPricing } = useRegionalPricing();
 
-  const totalVMs = providerStats.reduce((sum, provider) => sum + provider.vm_count, 0)
-  const totalStorageServices = providerStats.reduce((sum, provider) => sum + provider.storage_services, 0)
+  // Set up refresh interval
+  useEffect(() => {
+    if (!refreshInterval) return;
+
+    // Set up interval for data refetching
+    const intervalId = setInterval(() => {
+      refetchStats();
+      refetchVMs();
+      refetchStorage();
+      refetchRegionalPricing();
+      console.log('Dashboard data refreshed at', new Date().toLocaleTimeString());
+    }, refreshInterval);
+
+    // Clean up interval on unmount or when refreshInterval changes
+    return () => clearInterval(intervalId);
+  }, [refreshInterval, refetchStats, refetchVMs, refetchStorage, refetchRegionalPricing]);
+
+  // If any data is loading, show loading state
+  if (isLoadingStats || isLoadingVMs || isLoadingStorage || isLoadingRegionalPricing || 
+      !providerStats || !vmData || !storageData) {
+    return <LoadingFallback />;
+  }
+
+  const totalVMs = providerStats.reduce((sum: number, provider: ProviderStats) => sum + provider.vm_count, 0)
+  const totalStorageServices = providerStats.reduce((sum: number, provider: ProviderStats) => sum + provider.storage_services, 0)
 
   return (
     <div className="space-y-8">
@@ -26,6 +52,12 @@ async function DashboardContent() {
         <h1 className="text-3xl font-medium text-white">Overview</h1>
         <div className="text-white/70 text-right">
           <div className="text-2xl font-medium text-white">{new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long' })}</div>
+          {refreshInterval > 0 && (
+            <div className="text-white/50 text-sm flex items-center justify-end gap-1">
+              <RefreshCw size={12} className="animate-spin" />
+              Auto-refreshing every {refreshInterval / 1000}s
+            </div>
+          )}
         </div>
       </div>
 
@@ -37,9 +69,8 @@ async function DashboardContent() {
           <MainCostComparisonCard providerStats={providerStats} />
         </div>
 
-        {/* Right Column - Provider Connections & Recommendations */}
+        {/* Provider Connections */}
         <div className="space-y-6">
-          {/* Provider Connections */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-6">
             <CardHeader className="flex flex-row items-center justify-between pb-4">
               <CardTitle className="text-white text-lg font-medium">Provider connections</CardTitle>
@@ -51,7 +82,7 @@ async function DashboardContent() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="space-y-4">
-                {providerStats.map((stat) => (
+                {providerStats.map((stat: ProviderStats) => (
                   <div key={stat.provider} className="flex items-center justify-between">
                     <span className="text-white/70 text-sm">{stat.provider}</span>
                     <span className="text-white text-sm">
@@ -83,153 +114,7 @@ async function DashboardContent() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Recommendations */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-6">
-            <CardHeader className="flex flex-row items-center justify-between pb-4">
-              <CardTitle className="text-white text-lg font-medium">Recommendations</CardTitle>
-              <Button variant="ghost" size="sm" className="text-white/50 hover:text-white p-1">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                </svg>
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0 space-y-4">
-              <div className="text-white/70 text-sm">Cost optimization insights</div>
-              
-              <div className="bg-white/5 rounded-lg p-4">
-                <div className="text-white text-sm mb-2">
-                  Cheapest option: ${Math.min(...providerStats.map(p => p.min_vm_price)).toFixed(3)}/hour
-                </div>
-                <div className="text-white/50 text-xs mb-3">
-                  {providerStats.find(p => p.min_vm_price === Math.min(...providerStats.map(s => s.min_vm_price)))?.provider} offers lowest VM pricing
-                </div>
-              </div>
-              
-              <div className="text-white/70 text-sm">
-                <div className="mb-1">
-                  Avg cost difference: ${(Math.max(...providerStats.map(p => p.avg_vm_price)) - Math.min(...providerStats.map(p => p.avg_vm_price))).toFixed(3)}/hour
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/50 text-xs">Analysis</span>
-                  <span className="text-white/50 text-xs">Live</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
-      </div>
-
-      {/* Bottom Grid - Tracking, Detailed Report, Cost Optimization */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Workload Analysis Card */}
-        <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-6">
-          <CardHeader className="flex flex-row items-center justify-between pb-4">
-            <CardTitle className="text-white text-lg font-medium">Workload Analysis</CardTitle>
-            <Button variant="ghost" size="sm" className="text-white/50 hover:text-white p-1">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-              </svg>
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="text-white/70 text-sm mb-4">High-cost instances (&gt;$10/hr)</div>
-            <div className="text-white text-4xl font-light mb-2">
-              188,179
-            </div>
-            <div className="text-white/50 text-sm mb-4">VM instances</div>
-            
-            <div className="bg-white/5 rounded-lg p-3 mb-4">
-              <div className="text-white/70 text-xs mb-1">Monthly impact</div>
-              <div className="text-white text-lg font-medium">$4.31B</div>
-              <div className="text-white/50 text-xs">potential optimization target</div>
-            </div>
-            
-            <div className="text-white/70 text-xs">
-              21.3% of total instances are high-cost workloads requiring optimization review
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Regional Cost Analysis */}
-        <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-6">
-          <CardHeader className="flex flex-row items-center justify-between pb-4">
-            <CardTitle className="text-white text-lg font-medium">Regional Cost Analysis</CardTitle>
-            <Button variant="outline" size="sm" className="text-white/70 border-white/20 hover:bg-white/10">
-              Regions ↓
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="text-white/70 text-sm mb-4">Best value regions by provider</div>
-            
-            <div className="space-y-3 mb-4">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <span className="text-white text-sm">AZURE Asia</span>
-                </div>
-                <div className="text-right">
-                  <div className="text-white text-sm">$5.59/hr</div>
-                  <div className="text-white/50 text-xs">avg cost</div>
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                  <span className="text-white text-sm">AWS Asia</span>
-                </div>
-                <div className="text-right">
-                  <div className="text-white text-sm">$8.67/hr</div>
-                  <div className="text-white/50 text-xs">avg cost</div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-white/5 rounded-lg p-3">
-              <div className="text-white/70 text-xs mb-1">Savings opportunity</div>
-              <div className="text-white text-sm">Move 35% workloads to Asia</div>
-              <div className="text-white/50 text-xs">~$2.2K monthly savings per 100 instances</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Storage Optimization Insights */}
-        <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-6">
-          <CardHeader className="flex flex-row items-center justify-between pb-4">
-            <CardTitle className="text-white text-lg font-medium">Storage Optimization</CardTitle>
-            <Button variant="outline" size="sm" className="text-white/70 border-white/20 hover:bg-white/10">
-              Analyze
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="text-white/70 text-sm mb-4">Archive storage potential</div>
-            <div className="text-white text-4xl font-light mb-4">
-              92%
-            </div>
-            <div className="text-white/50 text-xs mb-4">
-              cost reduction using archive tiers
-            </div>
-            
-            <div className="space-y-2 mb-4">
-              <div className="flex justify-between">
-                <span className="text-white/70 text-xs">AWS Archive Instant</span>
-                <span className="text-white text-xs">$0.005/GB</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-white/70 text-xs">Standard Storage</span>
-                <span className="text-white text-xs">$0.025/GB</span>
-              </div>
-            </div>
-            
-            <div className="bg-white/5 rounded-lg p-3">
-              <div className="text-white/70 text-xs mb-1">Smart tiering available</div>
-              <div className="text-white text-sm">649 storage services</div>
-              <div className="text-white/50 text-xs">ready for optimization</div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Comparisons Overview Section */}
@@ -240,81 +125,16 @@ async function DashboardContent() {
         </div>
         
         <ComparisonOverview providerStats={providerStats} />
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          <RegionalCostComparison vmData={vmData} />
-          <BestValueMatrix vmData={vmData} />
-        </div>
       </div>
-
-      {/* Data Insights Section */}
+      
+      {/* Regional Pricing Graph */}
       <div className="mt-8">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-medium text-white">Data Insights</h2>
-          <Button variant="outline" size="sm" className="text-white/70 border-white/20 hover:bg-white/10">
-            View detailed comparison
-          </Button>
+          <h2 className="text-2xl font-medium text-white">Regional Pricing Analysis</h2>
+          <div className="text-white/50 text-sm">Average hourly rates</div>
         </div>
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top VM Instances */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-6">
-            <CardHeader className="flex flex-row items-center justify-between pb-4">
-              <CardTitle className="text-white text-lg font-medium">Most economical VMs</CardTitle>
-              <span className="text-white/50 text-sm">{vmData.length} instances</span>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="space-y-3">
-                {vmData.slice(0, 5).map((vm, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-2 h-2 rounded-full bg-white/70"></div>
-                      <div>
-                        <div className="text-white text-sm font-medium">{vm.vm_name}</div>
-                        <div className="text-white/50 text-xs">
-                          {vm.virtual_cpu_count} CPU • {vm.memory_gb}GB RAM • {vm.provider}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-white font-medium">${vm.price_per_hour_usd.toFixed(3)}</div>
-                      <div className="text-white/50 text-xs">per hour</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Storage Comparison */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-6">
-            <CardHeader className="flex flex-row items-center justify-between pb-4">
-              <CardTitle className="text-white text-lg font-medium">Storage pricing</CardTitle>
-              <span className="text-white/50 text-sm">{storageData.length} services</span>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="space-y-3">
-                {storageData.slice(0, 5).map((storage, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-2 h-2 rounded-full bg-white/70"></div>
-                      <div>
-                        <div className="text-white text-sm font-medium">{storage.service_name}</div>
-                        <div className="text-white/50 text-xs">
-                          {storage.storage_class} • {storage.access_tier} • {storage.provider}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-white font-medium">${storage.capacity_price.toFixed(4)}</div>
-                      <div className="text-white/50 text-xs">per GB</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <RegionalPricingGraph data={regionalPricing} />
       </div>
     </div>
   )
@@ -350,6 +170,9 @@ function LoadingFallback() {
 }
 
 export default function Home() {
+  // Add refresh interval state - 0 means no refresh, 60000 means refresh every 60 seconds
+  const [refreshInterval] = useState(0);
+  
   return (
     <div className="min-h-screen bg-black">
       {/* Floating Navigation */}
@@ -357,9 +180,8 @@ export default function Home() {
       
       {/* Main Content with Padding */}
       <div className="px-6 pb-8">
-        <Suspense fallback={<LoadingFallback />}>
-          <DashboardContent />
-        </Suspense>
+        <DashboardContent refreshInterval={refreshInterval} />
+      
       </div>
     </div>
   )
