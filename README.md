@@ -291,41 +291,6 @@ The CSV file has the following columns:
 | `flat_item_price` | Float         | Any flat monthly fee or item-based pricing, in US Dollars. Should be `null` if not applicable.                                                                                   | `0.50`                           |
 | `other_details`   | String (JSON) | A single JSON string containing provider-specific details. In the output CSV, this entire string is enclosed in double quotes (`"`), and any internal double quotes are escaped. | `"{""key"":""value""}"`          |
 
-## 🔧 Configuration
-
-### Environment Variables
-
-```bash
-# Database Configuration
-DATABASE_URL=postgresql://username:password@hostname:5432/database_name
-
-# Individual Database Parameters
-DB_HOST=hostname
-DB_PORT=5432
-DB_USER=username
-DB_PASSWORD=password
-DB_NAME=database_name
-
-# AWS Configuration (for data collection)
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_DEFAULT_REGION=us-east-1
-
-# Azure Configuration (for data collection)
-AZURE_CLIENT_ID=your_client_id
-AZURE_CLIENT_SECRET=your_client_secret
-AZURE_TENANT_ID=your_tenant_id
-AZURE_SUBSCRIPTION_ID=your_subscription_id
-```
-
-### Local Development
-
-For local development with Docker database:
-
-```bash
-DATABASE_URL=postgresql://clouduser:cloudpassword@localhost:5432/cloudcosts
-```
-
 ## 📈 Features
 
 ### Cost Analysis
