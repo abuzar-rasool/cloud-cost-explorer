@@ -43,24 +43,35 @@ def save_skus_to_csv(skus, filename):
         header = [
             "name", "description", "machine_name", "category_resourceGroup", "category_usageType",
             "category_serviceDisplayName", "region", "pricing_unit", "price_units", "price_nanos", 
-            "price_dollars_hourly", "os_type"
+            "price_dollars_hourly", "os_type", "sku_type"
         ]
         writer.writerow(header)
 
+        # Define keywords to exclude
+        exclude_keywords = ['Reserved', 'DWS', 'Spot', 'Sole Tenancy', 'License', 'Committed', 'Storage', 'Local SSD', 'Burstable']
+
         total_rows = 0
         filtered_skus = 0
+        excluded_by_keywords = 0
+        
         for sku in skus:
             # Check if this is an OnDemand SKU
             usage_type = sku.get("category", {}).get("usageType", "")
             if "OnDemand" not in usage_type:
                 filtered_skus += 1
                 continue
+            
+            description = sku.get("description", "")
+            
+            # Check if description contains any of the exclude keywords
+            if any(keyword.lower() in description.lower() for keyword in exclude_keywords):
+                excluded_by_keywords += 1
+                continue
                 
             pricing_info = sku.get("pricingInfo", [])
             price_units = ""
             price_nanos = ""
             pricing_unit = ""
-            description = sku.get("description", "")
             
             # Extract machine name from description
             machine_name = extract_machine_name(description)
@@ -87,9 +98,10 @@ def save_skus_to_csv(skus, filename):
                 price_dollars = price_dollars / 24
             # Other units like 'GiBy.h' (GiB per hour) don't need conversion for hourly rate
             
-            # Determine OS type
+            # Determine OS type and SKU type
             resource_group = sku.get("category", {}).get("resourceGroup", "")
             os_type = determine_os_type(resource_group, description)
+            sku_type = determine_sku_type(description)
             
             # Get list of regions
             regions = sku.get("serviceRegions", [])
@@ -108,7 +120,8 @@ def save_skus_to_csv(skus, filename):
                     price_units,
                     price_nanos,
                     f"{price_dollars:.9f}",  # Format with 9 decimal places for precision - hourly price in USD
-                    os_type
+                    os_type,
+                    sku_type
                 ])
                 total_rows += 1
             else:
@@ -126,11 +139,13 @@ def save_skus_to_csv(skus, filename):
                         price_units,
                         price_nanos,
                         f"{price_dollars:.9f}",  # Format with 9 decimal places for precision - hourly price in USD
-                        os_type
+                        os_type,
+                        sku_type
                     ])
                     total_rows += 1
 
-    print(f"Saved raw SKUs to {filename} with {total_rows} rows (filtered out {filtered_skus} non-OnDemand SKUs from {len(skus)} total SKUs)")
+    print(f"Saved raw SKUs to {filename} with {total_rows} rows")
+    print(f"Filtered out {filtered_skus} non-OnDemand SKUs and {excluded_by_keywords} SKUs with excluded keywords from {len(skus)} total SKUs")
 
 def save_machine_specs_to_csv(machines, filename):
     with open(filename, "w", newline='', encoding="utf-8") as f:
@@ -459,6 +474,29 @@ def determine_cpu_architecture(machine_name, description):
     # Most other GCP instances are Intel/AMD x86_64 based
     return "x86_64"
 
+def determine_sku_type(description):
+    """
+    Determine if the SKU is for custom or standard instances.
+    
+    Args:
+        description: The description from the SKU
+    
+    Returns:
+        String: "custom" or "standard"
+    """
+    if not description:
+        return "standard"
+    
+    description_lower = description.lower()
+    
+    # Check for custom instance indicators
+    if any(custom_keyword in description_lower for custom_keyword in [
+        "custom", "custom-", "custom instance", "customized"
+    ]):
+        return "custom"
+    
+    return "standard"
+
 def get_gpu_memory_size(gpu_name):
     """
     Get the memory size (in GiB) for a specific GPU model.
@@ -532,9 +570,10 @@ def map_region_to_continent(gcp_region):
     
     Returns:
         String: Continent name from the enum: north_america, south_america, europe, asia, africa, oceania, antarctica
+        Returns None if region is not recognized (to skip unknown regions)
     """
     if not gcp_region:
-        return ""
+        return None
     
     # Convert to lowercase for consistent matching
     region_lower = gcp_region.lower()
@@ -559,11 +598,11 @@ def map_region_to_continent(gcp_region):
     ]):
         return "europe"
     
-    # Asia regions
+    # Asia regions (including Middle East)
     if any(asia_region in region_lower for asia_region in [
         "asia-", "tokyo", "osaka", "seoul", "hongkong", "mumbai", "delhi", "singapore", 
         "jakarta", "taiwan", "bangkok", "dubai", "qatar", "israel", "doha", "china", 
-        "beijing", "shanghai", "shenzhen"
+        "beijing", "shanghai", "shenzhen", "me-central1", "me-central2", "me-west1"
     ]):
         return "asia"
     
@@ -591,15 +630,15 @@ def map_region_to_continent(gcp_region):
         return "south_america"
     elif region_lower.startswith("eu"):
         return "europe"
-    elif region_lower.startswith("as") or region_lower.startswith("jp") or region_lower.startswith("kr") or region_lower.startswith("sg"):
+    elif region_lower.startswith("as") or region_lower.startswith("jp") or region_lower.startswith("kr") or region_lower.startswith("sg") or region_lower.startswith("me"):
         return "asia"
     elif region_lower.startswith("af") or region_lower.startswith("za"):
         return "africa"
     elif region_lower.startswith("au") or region_lower.startswith("nz") or region_lower.startswith("oc"):
         return "oceania"
     
-    # If still no match, return the original region (default fallback)
-    return "other"
+    # If still no match, return None to skip this region
+    return None
 
 def join_and_format_data(machine_specs_file, skus_file, output_file):
     """
@@ -639,6 +678,7 @@ def join_and_format_data(machine_specs_file, skus_file, output_file):
     
     # Prepare the output data
     joined_data = []
+    skipped_records = 0
     
     # Process each machine spec
     for machine in machine_specs:
@@ -653,12 +693,18 @@ def join_and_format_data(machine_specs_file, skus_file, output_file):
         if not matching_skus:
             # Create a single record without pricing info
             record = create_output_record(machine, None)
-            joined_data.append(record)
+            if record is not None:  # Only add if region is recognized
+                joined_data.append(record)
+            else:
+                skipped_records += 1
         else:
             # For each matching SKU (different OS types), create a separate record
             for sku in matching_skus:
                 record = create_output_record(machine, sku)
-                joined_data.append(record)
+                if record is not None:  # Only add if region is recognized
+                    joined_data.append(record)
+                else:
+                    skipped_records += 1
     
     # Write the joined data to CSV
     with open(output_file, "w", newline='', encoding="utf-8") as f:
@@ -674,6 +720,8 @@ def join_and_format_data(machine_specs_file, skus_file, output_file):
         writer.writerows(joined_data)
     
     print(f"Joined data saved to {output_file} with {len(joined_data)} records")
+    if skipped_records > 0:
+        print(f"Skipped {skipped_records} records with unrecognized regions")
 
 def create_output_record(machine, sku):
     """
@@ -684,7 +732,7 @@ def create_output_record(machine, sku):
         sku: A SKU record from raw_skus.csv, or None if no matching SKU
     
     Returns:
-        A dictionary containing the mapped fields
+        A dictionary containing the mapped fields, or None if region should be skipped
     """
     # Extract and convert fields from the machine spec
     try:
@@ -707,11 +755,15 @@ def create_output_record(machine, sku):
     except ValueError:
         gpu_memory = 0.0
     
-    # Create a record with fields from machine_specs
     # Map the GCP region to a continent
     gcp_region = machine.get("region", "")
     continent = map_region_to_continent(gcp_region)
     
+    # Skip this record if region is not recognized
+    if continent is None:
+        return None
+    
+    # Create a record with fields from machine_specs
     record = {
         "vm_name": machine.get("name", ""),
         "provider_name": "GCP",
@@ -731,19 +783,176 @@ def create_output_record(machine, sku):
         })
     }
     
-    # Add fields from the SKU if available
+    # Add fields from the SKU if available with proper pricing calculation
     if sku:
         try:
-            price_per_hour = float(sku.get("price_dollars_hourly", "0"))
+            base_price = float(sku.get("price_dollars_hourly", "0"))
+            pricing_unit = sku.get("pricing_unit", "")
+            
+            # Calculate final price based on pricing unit
+            if pricing_unit == "GiBy.h":
+                # Memory-based pricing: multiply base price by RAM amount
+                final_price = base_price * memory_gb
+            elif pricing_unit == "h":
+                # CPU-based pricing: multiply base price by vCPU count
+                final_price = base_price * vcpu_count
+            else:
+                # For other pricing units, use base price as-is
+                final_price = base_price
+                
         except ValueError:
-            price_per_hour = 0.0
+            final_price = 0.0
         
-        record["price_per_hour_usd"] = price_per_hour
+        record["price_per_hour_usd"] = final_price
         record["os_type"] = sku.get("os_type", "OTHER")
     else:
         # Default values if no matching SKU
         record["price_per_hour_usd"] = 0.0
         record["os_type"] = "OTHER"
+    
+    return record
+
+def create_consolidated_output_record(machine, skus_by_unit_and_type, os_type="OTHER"):
+    """
+    Create an output record with consolidated pricing from matching SKU types (CPU + RAM from same type).
+    
+    Args:
+        machine: A machine spec record
+        skus_by_unit_and_type: Dictionary of SKUs grouped by pricing_unit and sku_type
+        os_type: The OS type for this record
+    
+    Returns:
+        A dictionary containing the mapped fields with combined pricing, or None if region should be skipped
+    """
+    # Extract and convert fields from the machine spec
+    try:
+        vcpu_count = int(machine.get("vcpu_info", "0") or machine.get("guestCpus", "0"))
+    except ValueError:
+        vcpu_count = 0
+    
+    try:
+        memory_gb = float(machine.get("ram_info", "0") or str(round(float(machine.get("memoryMb", "0")) / 1024, 2)))
+    except ValueError:
+        memory_gb = 0.0
+    
+    try:
+        gpu_count = int(machine.get("gpu_count", "0"))
+    except ValueError:
+        gpu_count = 0
+    
+    try:
+        gpu_memory = float(machine.get("gpu_memory_per_gpu", "0"))
+    except ValueError:
+        gpu_memory = 0.0
+    
+    # Map the GCP region to a continent
+    gcp_region = machine.get("region", "")
+    continent = map_region_to_continent(gcp_region)
+    
+    # Skip this record if region is not recognized
+    if continent is None:
+        return None
+    
+    # Create a record with fields from machine_specs
+    record = {
+        "vm_name": machine.get("name", ""),
+        "provider_name": "GCP",
+        "virtual_cpu_count": vcpu_count,
+        "memory_gb": memory_gb,
+        "cpu_arch": machine.get("cpu_arch", "x86_64"),
+        "gpu_count": gpu_count,
+        "gpu_name": machine.get("gpu_name", ""),
+        "gpu_memory": gpu_memory,
+        "region": continent,
+        "other_details": json.dumps({
+            "zone": machine.get("zone", ""),
+            "gcp_region": gcp_region,
+            "description": machine.get("description", ""),
+            "deprecationStatus": machine.get("deprecationStatus", ""),
+            "isSharedCpu": machine.get("isSharedCpu", "False") == "True"
+        })
+    }
+    
+    # Calculate combined pricing ensuring CPU and RAM come from the same SKU type
+    total_price = 0.0
+    pricing_details = []
+    
+    if skus_by_unit_and_type:
+        # Priority order: try custom first, then standard
+        sku_type_priority = ["custom", "standard"]
+        
+        for sku_type in sku_type_priority:
+            if sku_type not in skus_by_unit_and_type:
+                continue
+                
+            skus_by_unit = skus_by_unit_and_type[sku_type]
+            cpu_price = 0.0
+            ram_price = 0.0
+            has_cpu_pricing = False
+            has_ram_pricing = False
+            
+            # Calculate CPU pricing (pricing_unit = "h")
+            cpu_sku = skus_by_unit.get("h")
+            if cpu_sku:
+                try:
+                    cpu_base_price = float(cpu_sku.get("price_dollars_hourly", "0"))
+                    cpu_price = cpu_base_price * vcpu_count
+                    has_cpu_pricing = True
+                    pricing_details.append(f"CPU ({sku_type}): ${cpu_base_price:.6f}/vCPU * {vcpu_count} = ${cpu_price:.6f}")
+                except ValueError:
+                    pass
+            
+            # Calculate RAM pricing (pricing_unit = "GiBy.h")
+            ram_sku = skus_by_unit.get("GiBy.h")
+            if ram_sku:
+                try:
+                    ram_base_price = float(ram_sku.get("price_dollars_hourly", "0"))
+                    ram_price = ram_base_price * memory_gb
+                    has_ram_pricing = True
+                    pricing_details.append(f"RAM ({sku_type}): ${ram_base_price:.6f}/GB * {memory_gb} = ${ram_price:.6f}")
+                except ValueError:
+                    pass
+            
+            # If we have both CPU and RAM pricing from the same SKU type, use them
+            if has_cpu_pricing and has_ram_pricing:
+                total_price = cpu_price + ram_price
+                pricing_details.append(f"Total ({sku_type}): ${total_price:.6f}")
+                break
+            
+            # If we have only one type of pricing from this SKU type, continue to next type
+            # but keep track of partial pricing in case we don't find complete pricing
+            elif has_cpu_pricing or has_ram_pricing:
+                partial_price = cpu_price + ram_price
+                if total_price == 0.0:  # Only use if we haven't found any pricing yet
+                    total_price = partial_price
+        
+        # If no CPU/RAM pricing found, try other pricing units as fallback
+        if total_price == 0.0:
+            for sku_type in sku_type_priority:
+                if sku_type not in skus_by_unit_and_type:
+                    continue
+                    
+                skus_by_unit = skus_by_unit_and_type[sku_type]
+                for pricing_unit, sku in skus_by_unit.items():
+                    if pricing_unit not in ["h", "GiBy.h"]:
+                        try:
+                            base_price = float(sku.get("price_dollars_hourly", "0"))
+                            total_price = base_price
+                            pricing_details.append(f"Fallback ({sku_type}, {pricing_unit}): ${base_price:.6f}")
+                            break
+                        except ValueError:
+                            continue
+                if total_price > 0.0:
+                    break
+    
+    record["price_per_hour_usd"] = total_price
+    record["os_type"] = os_type
+    
+    # Add pricing breakdown to other_details if available
+    if pricing_details:
+        other_details = json.loads(record["other_details"])
+        other_details["pricing_breakdown"] = pricing_details
+        record["other_details"] = json.dumps(other_details)
     
     return record
 
@@ -759,9 +968,13 @@ def process_and_save_consolidated_data(skus, machines, output_file):
     """
     print("Processing raw data and generating consolidated file...")
     
+    # Define keywords to exclude
+    exclude_keywords = ['Reserved', 'DWS', 'Spot', 'Sole Tenancy', 'License', 'Committed', 'Storage', 'Local SSD', 'Burstable']
+    
     # Process SKUs to extract relevant information
     processed_skus = []
     filtered_skus = 0
+    excluded_by_keywords = 0
     
     for sku in skus:
         # Check if this is an OnDemand SKU
@@ -769,12 +982,18 @@ def process_and_save_consolidated_data(skus, machines, output_file):
         if "OnDemand" not in usage_type:
             filtered_skus += 1
             continue
+        
+        description = sku.get("description", "")
+        
+        # Check if description contains any of the exclude keywords
+        if any(keyword.lower() in description.lower() for keyword in exclude_keywords):
+            excluded_by_keywords += 1
+            continue
             
         pricing_info = sku.get("pricingInfo", [])
         price_units = ""
         price_nanos = ""
         pricing_unit = ""
-        description = sku.get("description", "")
         
         # Extract machine name from description
         machine_name = extract_machine_name(description)
@@ -797,9 +1016,10 @@ def process_and_save_consolidated_data(skus, machines, output_file):
         elif pricing_unit == "d":  # Daily price
             price_dollars = price_dollars / 24
         
-        # Determine OS type
+        # Determine OS type and SKU type
         resource_group = sku.get("category", {}).get("resourceGroup", "")
         os_type = determine_os_type(resource_group, description)
+        sku_type = determine_sku_type(description)
         
         # Get list of regions
         regions = sku.get("serviceRegions", [])
@@ -818,7 +1038,8 @@ def process_and_save_consolidated_data(skus, machines, output_file):
                 "price_units": price_units,
                 "price_nanos": price_nanos,
                 "price_dollars_hourly": price_dollars,
-                "os_type": os_type
+                "os_type": os_type,
+                "sku_type": sku_type
             })
         else:
             # Create a separate entry for each region
@@ -835,10 +1056,12 @@ def process_and_save_consolidated_data(skus, machines, output_file):
                     "price_units": price_units,
                     "price_nanos": price_nanos,
                     "price_dollars_hourly": price_dollars,
-                    "os_type": os_type
+                    "os_type": os_type,
+                    "sku_type": sku_type
                 })
     
-    print(f"Processed {len(processed_skus)} SKUs (filtered out {filtered_skus} non-OnDemand SKUs from {len(skus)} total SKUs)")
+    print(f"Processed {len(processed_skus)} SKUs")
+    print(f"Filtered out {filtered_skus} non-OnDemand SKUs and {excluded_by_keywords} SKUs with excluded keywords from {len(skus)} total SKUs")
     
     # Process machine specs
     processed_machines = []
@@ -884,16 +1107,29 @@ def process_and_save_consolidated_data(skus, machines, output_file):
     
     print(f"Processed {len(processed_machines)} machine specs")
     
-    # Create a lookup dictionary for SKUs based on machine_name and region
+    # Create enhanced lookup dictionary for SKUs
     sku_lookup = {}
     for sku in processed_skus:
         key = (sku.get("machine_name", ""), sku.get("region", ""))
         if key not in sku_lookup:
-            sku_lookup[key] = []
-        sku_lookup[key].append(sku)
+            sku_lookup[key] = {}
+        
+        # Group SKUs by OS type, then by SKU type, then by pricing unit
+        os_type = sku.get("os_type", "OTHER")
+        sku_type = sku.get("sku_type", "standard")
+        pricing_unit = sku.get("pricing_unit", "")
+        
+        if os_type not in sku_lookup[key]:
+            sku_lookup[key][os_type] = {}
+        
+        if sku_type not in sku_lookup[key][os_type]:
+            sku_lookup[key][os_type][sku_type] = {}
+        
+        sku_lookup[key][os_type][sku_type][pricing_unit] = sku
     
     # Prepare the output data
     joined_data = []
+    skipped_records = 0
     
     # Process each machine spec
     for machine in processed_machines:
@@ -901,17 +1137,23 @@ def process_and_save_consolidated_data(skus, machines, output_file):
         region = machine.get("region", "")  # This is the original GCP region code
         
         # Look up matching SKUs
-        matching_skus = sku_lookup.get((machine_name, region), [])
+        matching_skus_by_os = sku_lookup.get((machine_name, region), {})
         
         # If no matching SKUs, include the machine with null pricing
-        if not matching_skus:
-            record = create_output_record(machine, None)
-            joined_data.append(record)
-        else:
-            # For each matching SKU (different OS types), create a separate record
-            for sku in matching_skus:
-                record = create_output_record(machine, sku)
+        if not matching_skus_by_os:
+            record = create_consolidated_output_record(machine, {})
+            if record is not None:  # Only add if region is recognized
                 joined_data.append(record)
+            else:
+                skipped_records += 1
+        else:
+            # For each OS type, create a consolidated record
+            for os_type, skus_by_type in matching_skus_by_os.items():
+                record = create_consolidated_output_record(machine, skus_by_type, os_type)
+                if record is not None:  # Only add if region is recognized
+                    joined_data.append(record)
+                else:
+                    skipped_records += 1
     
     # Write the joined data to CSV
     with open(output_file, "w", newline='', encoding="utf-8") as f:
@@ -927,6 +1169,8 @@ def process_and_save_consolidated_data(skus, machines, output_file):
         writer.writerows(joined_data)
     
     print(f"Consolidated data saved to {output_file} with {len(joined_data)} records")
+    if skipped_records > 0:
+        print(f"Skipped {skipped_records} records with unrecognized regions")
 
 if __name__ == "__main__":
     print(f"Fetching real-time SKUs for service ID: {SERVICE_ID}")
@@ -935,5 +1179,16 @@ if __name__ == "__main__":
     print(f"Fetching Compute Engine machine specs for project: {PROJECT_ID}")
     machines = fetch_raw_machine_specs(PROJECT_ID)
     
-    # Process data and generate consolidated file directly
+    # Save separate files first
+    print("Generating separate CSV files...")
+    save_skus_to_csv(skus, "raw_skus.csv")
+    save_machine_specs_to_csv(machines, "raw_machine_specs.csv")
+    
+    # Then create the consolidated file
+    print("Generating consolidated file...")
     process_and_save_consolidated_data(skus, machines, "gcp_compute_pricing.csv")
+    
+    print("All files generated successfully!")
+    print("- raw_skus.csv: Contains pricing information")
+    print("- raw_machine_specs.csv: Contains machine specifications")
+    print("- gcp_compute_pricing.csv: Contains merged and formatted data")
