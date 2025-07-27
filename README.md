@@ -295,6 +295,185 @@ The CSV file has the following columns:
 
 ### Environment Variables
 
+```bash
+# Database Configuration
+DATABASE_URL=postgresql://username:password@hostname:5432/database_name
+
+# Individual Database Parameters
+DB_HOST=hostname
+DB_PORT=5432
+DB_USER=username
+DB_PASSWORD=password
+DB_NAME=database_name
+
+# AWS Configuration (for data collection)
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_DEFAULT_REGION=us-east-1
+
+# Azure Configuration (for data collection)
+AZURE_CLIENT_ID=your_client_id
+AZURE_CLIENT_SECRET=your_client_secret
+AZURE_TENANT_ID=your_tenant_id
+AZURE_SUBSCRIPTION_ID=your_subscription_id
 ```
 
+### Local Development
+
+For local development with Docker database:
+
+```bash
+DATABASE_URL=postgresql://clouduser:cloudpassword@localhost:5432/cloudcosts
 ```
+
+## 📈 Features
+
+### Cost Analysis
+
+- **Provider Comparison**: Side-by-side pricing across AWS, Azure, GCP
+- **Regional Analysis**: Geographic pricing variations
+- **Instance Optimization**: Best value recommendations
+- **Storage Analysis**: Cost-effective storage class selection
+
+### Data Visualization
+
+- **Interactive Charts**: Cost trends and comparisons
+- **Regional Maps**: Geographic pricing visualization
+- **Comparison Tables**: Detailed pricing breakdowns
+- **Optimization Suggestions**: Cost-saving recommendations
+
+### Data Management
+
+- **Automated Collection**: Scheduled pricing data updates
+- **Standardized Format**: Consistent data structure across providers
+- **Historical Tracking**: Price change monitoring
+- **Export Capabilities**: CSV and JSON data export
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+cost-explorer-cloud/
+├── app/                    # Next.js frontend application
+│   ├── src/
+│   │   ├── app/           # Next.js app router
+│   │   ├── components/    # React components
+│   │   ├── hooks/         # Custom React hooks
+│   │   ├── services/      # API services
+│   │   └── types/         # TypeScript types
+│   ├── prisma/            # Database schema
+│   └── public/            # Static assets
+├── cdk/                   # AWS CDK infrastructure
+│   ├── app.ts            # Main CDK stack
+│   └── package.json      # CDK dependencies
+├── scripts/               # Data collection pipeline
+│   ├── clients/          # Provider-specific clients
+│   ├── utils/            # Utility functions
+│   └── pipeline.py       # Main pipeline script
+├── prisma/               # Database schema (root level)
+├── deploy-ecs.sh         # Deployment script
+└── docker-compose.yml    # Local development setup
+```
+
+### Adding New Providers
+
+1. Create provider client in `/scripts/clients/`
+2. Implement standardized data format
+3. Add to pipeline configuration
+4. Update frontend components
+5. Test data collection and visualization
+
+### Database Migrations
+
+```bash
+# Generate migration
+npx prisma migrate dev --name add_new_field
+
+# Apply migrations
+npx prisma migrate deploy
+
+# Reset database (development)
+npx prisma migrate reset
+```
+
+## 🚀 Deployment
+
+### Production Deployment
+
+```bash
+# Run automated deployment
+./deploy-ecs.sh
+```
+
+### Monitoring
+
+- **CloudWatch Logs**: Application and infrastructure logs
+- **ECS Service**: Container health monitoring
+- **RDS Monitoring**: Database performance metrics
+- **CloudFront**: CDN performance and caching
+
+### Scaling
+
+- **Horizontal Scaling**: ECS service auto-scaling
+- **Database Scaling**: RDS instance size adjustments
+- **CDN Optimization**: CloudFront caching strategies
+
+## 🔒 Security
+
+### Best Practices
+
+- Database credentials in AWS Secrets Manager
+- HTTPS enforcement via CloudFront
+- Security groups with minimal required access
+- IAM roles with least privilege principle
+- Regular security updates and patches
+
+### Production Considerations
+
+- Restrict database access to application only
+- Use private subnets with NAT Gateway
+- Enable database backups and encryption
+- Implement proper logging and monitoring
+- Regular security audits and updates
+
+## 📊 Monitoring and Analytics
+
+### Application Metrics
+
+- Request/response times
+- Error rates and types
+- User interaction patterns
+- Data pipeline success rates
+
+### Infrastructure Metrics
+
+- ECS service health
+- Database performance
+- CloudFront cache hit rates
+- Cost optimization opportunities
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Implement changes with tests
+4. Update documentation
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For issues and questions:
+
+1. Check the documentation
+2. Review existing issues
+3. Create a new issue with detailed information
+4. Contact the development team
+
+---
+
+**Note**: This application is optimized for AWS Free Tier usage. Monitor your AWS costs regularly to avoid unexpected charges.
