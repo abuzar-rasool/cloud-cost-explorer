@@ -1,5 +1,7 @@
 # Cloud Cost Explorer
 
+Deplyed on [https://d3f4hf3ydc63in.cloudfront.net/](https://d3f4hf3ydc63in.cloudfront.net/)
+
 A comprehensive cloud cost analysis platform that collects, processes, and visualizes pricing data from major cloud providers (AWS, Azure, GCP). The application provides detailed cost comparisons, regional pricing analysis, and storage optimization insights to help organizations make informed cloud infrastructure decisions.
 
 ## 🏗️ Project Architecture
