@@ -418,14 +418,6 @@ npx prisma migrate reset
 - CloudFront cache hit rates
 - Cost optimization opportunities
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Implement changes with tests
-4. Update documentation
-5. Submit a pull request
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
